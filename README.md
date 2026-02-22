@@ -1,6 +1,6 @@
 # Omnicare API (Dev Setup)
 
-## Coworker setup (fast)
+## Setup (fast)
 
 1) Get `dev.env.ps1` from the backend dev (shared privately).
 
