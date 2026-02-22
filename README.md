@@ -17,13 +17,29 @@
 
 ## Test login
 
-1) Open:
-- `http://localhost:8080/oauth2/authorization/google`
+1) Open the dev UI:
+- `http://localhost:8080/dev/index.html`
 
-2) After login, you will land on:
+2) Click **Login with Google**.
+
+3) After login, you will land on:
 - `http://localhost:8080/auth/dev/callback?token=...`
 
-3) Use the token to call APIs:
+4) Click **Open Dev UI with this token**.
+
+5) In the dev UI you should see:
+- `/api/account/me` returns your email + name and `hasPassword: false`
+- JWT payload contains `roles: ["PATIENT"]` and `registrationStatus: "PENDING_PASSWORD"`
+
+6) Set an initial password in the dev UI (calls `POST /api/auth/set-initial-password`).
+
+7) Re-login to refresh the JWT claims.
+
+## Notes
+- OTP is not implemented yet, so after setting a password your DB status becomes `PENDING_OTP` and you still won’t be `ACTIVE`.
+- Most `/api/**` endpoints return `403` until the user becomes `ACTIVE`.
+
+## (Optional) Backend-only test
 
 ```powershell
 $token = "<paste token>"

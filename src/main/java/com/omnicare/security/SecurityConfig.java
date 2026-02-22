@@ -15,6 +15,7 @@ import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
 import org.springframework.security.oauth2.server.resource.authentication.JwtGrantedAuthoritiesConverter;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
@@ -31,7 +32,8 @@ public class SecurityConfig {
             OmnicareOidcUserService omnicareOidcUserService,
             OAuth2LoginSuccessHandler oAuth2LoginSuccessHandler,
             JwtDecoder jwtDecoder,
-            OAuth2AuthorizationRequestResolver authorizationRequestResolver
+            OAuth2AuthorizationRequestResolver authorizationRequestResolver,
+            RegistrationStatusFilter registrationStatusFilter
     ) throws Exception {
         http
                 .cors(cors -> {
@@ -39,7 +41,7 @@ public class SecurityConfig {
                 .csrf(csrf -> csrf.disable())
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED))
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/", "/error", "/login/**", "/oauth2/**", "/auth/dev/**").permitAll()
+                        .requestMatchers("/", "/error", "/login/**", "/oauth2/**", "/auth/dev/**", "/dev/**").permitAll()
                         .requestMatchers("/api/**").authenticated()
                         .anyRequest().authenticated()
                 )
@@ -59,6 +61,8 @@ public class SecurityConfig {
                                 .jwtAuthenticationConverter(jwtAuthenticationConverter())
                         )
                 );
+
+        http.addFilterAfter(registrationStatusFilter, BearerTokenAuthenticationFilter.class);
 
         return http.build();
     }

@@ -38,6 +38,9 @@ public class DevAuthController {
                 + (token == null
                 ? "  <p><b>No token</b> was provided on the query string.</p>\n"
                 : "  <p>Copy the JWT below and use it as <code>Authorization: Bearer &lt;token&gt;</code>.</p>\n")
+                + (token == null
+                ? ""
+                : "  <p><a href=\"/dev/index.html?token=" + safeToken + "\">Open Dev UI with this token</a></p>\n")
                 + "  <textarea readonly>" + safeToken + "</textarea>\n"
                 + "  <h2>Example</h2>\n"
                 + "  <pre>curl -H \"Authorization: Bearer " + safeToken + "\" http://localhost:8080/api/account/me</pre>\n"

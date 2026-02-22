@@ -1,6 +1,10 @@
 package com.omnicare.security;
 
 import com.omnicare.config.AppProperties;
+import com.omnicare.user.User;
+import com.omnicare.user.UserRepository;
+import com.omnicare.user.RegistrationStatus;
+import com.omnicare.user.UserRole;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -18,10 +22,12 @@ public class OAuth2LoginSuccessHandler implements AuthenticationSuccessHandler {
 
     private final JwtService jwtService;
     private final String redirectUri;
+    private final UserRepository userRepository;
 
-    public OAuth2LoginSuccessHandler(JwtService jwtService, AppProperties appProperties) {
+    public OAuth2LoginSuccessHandler(JwtService jwtService, AppProperties appProperties, UserRepository userRepository) {
         this.jwtService = jwtService;
         this.redirectUri = appProperties.oauth2().redirectUri();
+        this.userRepository = userRepository;
     }
 
     @Override
@@ -33,11 +39,22 @@ public class OAuth2LoginSuccessHandler implements AuthenticationSuccessHandler {
 
         String email = oauth2User.getAttribute("email");
         String name = oauth2User.getAttribute("name");
-        if (name == null || name.isBlank()) {
-            name = email;
+        String resolvedName = (name == null || name.isBlank()) ? email : name;
+
+        User user = userRepository.findByEmail(email)
+                .orElseGet(() -> new User(email, resolvedName));
+        user.setName(resolvedName);
+
+        if (user.getRole() == null) {
+            user.setRole(UserRole.PATIENT);
+        }
+        if (user.getRegistrationStatus() == null) {
+            user.setRegistrationStatus(RegistrationStatus.PENDING_PASSWORD);
         }
 
-        String token = jwtService.createToken(email, name);
+        user = userRepository.save(user);
+
+        String token = jwtService.createToken(user);
         String location = redirectUri + "?token=" + URLEncoder.encode(token, StandardCharsets.UTF_8);
         response.sendRedirect(location);
     }

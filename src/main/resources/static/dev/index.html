@@ -1,0 +1,267 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Omnicare Dev Auth UI</title>
+  <style>
+    :root { --bg:#0b1220; --card:#121b2f; --text:#e9eefc; --muted:#aab6da; --line:#223055; --accent:#4f8cff; --danger:#ff5c7a; --ok:#38d996; }
+    body { margin:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial; background: linear-gradient(180deg, var(--bg), #070b14); color: var(--text); }
+    .wrap { max-width: 980px; margin: 0 auto; padding: 28px 18px 64px; }
+    h1 { font-size: 22px; margin: 0 0 8px; }
+    p { margin: 6px 0; color: var(--muted); }
+    .grid { display:grid; grid-template-columns: 1fr; gap: 14px; margin-top: 18px; }
+    @media (min-width: 920px){ .grid{ grid-template-columns: 1.1fr 0.9fr; } }
+    .card { background: rgba(18,27,47,0.9); border: 1px solid rgba(34,48,85,0.7); border-radius: 14px; padding: 14px; }
+    .row { display:flex; gap: 10px; flex-wrap: wrap; align-items:center; }
+    button { background: var(--accent); border:none; color:white; border-radius: 10px; padding: 10px 12px; cursor:pointer; font-weight: 600; }
+    button.secondary { background: transparent; border: 1px solid rgba(34,48,85,0.9); color: var(--text); }
+    button.danger { background: var(--danger); }
+    input { background: rgba(7,11,20,0.7); border: 1px solid rgba(34,48,85,0.9); border-radius: 10px; padding: 10px 12px; color: var(--text); width: 100%; }
+    textarea { width: 100%; min-height: 190px; background: rgba(7,11,20,0.7); border: 1px solid rgba(34,48,85,0.9); border-radius: 10px; padding: 10px 12px; color: var(--text); font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; font-size: 12px; }
+    pre { white-space: pre-wrap; word-break: break-word; margin: 0; }
+    code { background: rgba(7,11,20,0.7); padding: 2px 6px; border-radius: 8px; border: 1px solid rgba(34,48,85,0.9); }
+    .pill { display:inline-flex; align-items:center; gap: 8px; padding: 6px 10px; border-radius: 999px; border: 1px solid rgba(34,48,85,0.9); color: var(--muted); }
+    .dot { width: 10px; height: 10px; border-radius: 50%; background: #667; }
+    .dot.ok { background: var(--ok); }
+    .dot.bad { background: var(--danger); }
+    .small { font-size: 12px; color: var(--muted); }
+    .kv { display:grid; grid-template-columns: 120px 1fr; gap: 6px 10px; font-size: 13px; margin-top: 10px; }
+    .kv div:nth-child(odd) { color: var(--muted); }
+    .warn { color: #ffd479; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Omnicare Dev Auth UI</h1>
+    <p>Visualizes Google OAuth2 → JWT → onboarding status.</p>
+
+    <div class="row">
+      <span class="pill" id="pillAuth"><span class="dot" id="dotAuth"></span><span id="authText">No token</span></span>
+      <span class="pill"><span class="dot" id="dotApi"></span><span id="apiText">API unknown</span></span>
+    </div>
+
+    <div class="grid">
+      <div class="card">
+        <h2 style="margin:0 0 10px; font-size:16px;">1) Login + Token</h2>
+        <div class="row">
+          <button id="btnLogin">Login with Google</button>
+          <button id="btnClear" class="secondary">Clear token</button>
+          <button id="btnMe" class="secondary">Refresh /api/account/me</button>
+        </div>
+
+        <div style="margin-top:10px;" class="small">
+          Stored in <code>localStorage</code> as <code>omnicare.jwt</code>.
+        </div>
+
+        <div style="margin-top:12px;">
+          <label class="small" for="jwt">JWT</label>
+          <textarea id="jwt" spellcheck="false" placeholder="JWT will appear here after login..."></textarea>
+        </div>
+
+        <div style="margin-top:12px;">
+          <label class="small">Decoded payload</label>
+          <pre id="decoded" class="card" style="padding:10px; border-radius: 10px; border-color: rgba(34,48,85,0.55); background: rgba(7,11,20,0.45);"></pre>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2 style="margin:0 0 10px; font-size:16px;">2) Account state</h2>
+        <div class="kv">
+          <div>Email</div><div id="meEmail">-</div>
+          <div>Name</div><div id="meName">-</div>
+          <div>Has password</div><div id="meHasPassword">-</div>
+          <div>Registration status</div><div id="meReg">-</div>
+          <div>Roles</div><div id="meRoles">-</div>
+        </div>
+
+        <hr style="border:none; border-top:1px solid rgba(34,48,85,0.7); margin: 14px 0;" />
+
+        <h2 style="margin:0 0 10px; font-size:16px;">3) Set initial password</h2>
+        <p class="small">This calls <code>POST /api/auth/set-initial-password</code>. It should move you from <code>PENDING_PASSWORD</code> to <code>PENDING_OTP</code>.</p>
+
+        <div style="margin-top:10px;">
+          <input id="password" type="password" placeholder="Enter a new password" />
+        </div>
+        <div class="row" style="margin-top:10px;">
+          <button id="btnSetPassword">Set password</button>
+        </div>
+
+        <div style="margin-top:12px;">
+          <label class="small">Last response</label>
+          <pre id="lastResponse" class="card" style="padding:10px; border-radius: 10px; border-color: rgba(34,48,85,0.55); background: rgba(7,11,20,0.45);"></pre>
+        </div>
+
+        <p class="small warn" style="margin-top:12px;">Note: ACTIVE step needs OTP flow (not implemented yet). You can optionally add a dev-only “activate” endpoint.</p>
+      </div>
+    </div>
+  </div>
+
+<script>
+  const LS_KEY = 'omnicare.jwt';
+
+  function setDot(el, state) {
+    el.classList.remove('ok','bad');
+    if (state === 'ok') el.classList.add('ok');
+    if (state === 'bad') el.classList.add('bad');
+  }
+
+  function b64UrlDecodeToString(b64url) {
+    const b64 = b64url.replace(/-/g, '+').replace(/_/g, '/');
+    const padded = b64 + '='.repeat((4 - (b64.length % 4)) % 4);
+    const binary = atob(padded);
+    const bytes = Uint8Array.from(binary, c => c.charCodeAt(0));
+    return new TextDecoder().decode(bytes);
+  }
+
+  function decodeJwtPayload(token) {
+    const parts = token.split('.');
+    if (parts.length < 2) return null;
+    return JSON.parse(b64UrlDecodeToString(parts[1]));
+  }
+
+  function getToken() {
+    return localStorage.getItem(LS_KEY) || '';
+  }
+
+  function setToken(token) {
+    if (token) localStorage.setItem(LS_KEY, token);
+    else localStorage.removeItem(LS_KEY);
+    renderToken();
+  }
+
+  function renderToken() {
+    const token = getToken();
+    document.getElementById('jwt').value = token;
+
+    const dotAuth = document.getElementById('dotAuth');
+    const authText = document.getElementById('authText');
+
+    if (!token) {
+      setDot(dotAuth, 'bad');
+      authText.textContent = 'No token';
+      document.getElementById('decoded').textContent = '';
+      return;
+    }
+
+    setDot(dotAuth, 'ok');
+    authText.textContent = 'Token present';
+
+    try {
+      const payload = decodeJwtPayload(token);
+      document.getElementById('decoded').textContent = JSON.stringify(payload, null, 2);
+    } catch (e) {
+      document.getElementById('decoded').textContent = 'Failed to decode payload: ' + e;
+    }
+  }
+
+  async function apiFetch(path, options = {}) {
+    const token = getToken();
+    const headers = new Headers(options.headers || {});
+    if (token) headers.set('Authorization', 'Bearer ' + token);
+    return fetch(path, { ...options, headers });
+  }
+
+  function setLastResponse(text) {
+    document.getElementById('lastResponse').textContent = text;
+  }
+
+  function setApiStatus(ok, text) {
+    setDot(document.getElementById('dotApi'), ok ? 'ok' : 'bad');
+    document.getElementById('apiText').textContent = text;
+  }
+
+  function setMeView(me, jwtPayload) {
+    document.getElementById('meEmail').textContent = me?.email ?? '-';
+    document.getElementById('meName').textContent = me?.name ?? '-';
+    document.getElementById('meHasPassword').textContent = (me?.hasPassword === true) ? 'true' : (me?.hasPassword === false ? 'false' : '-');
+
+    const reg = jwtPayload?.registrationStatus ?? '-';
+    const roles = Array.isArray(jwtPayload?.roles) ? jwtPayload.roles.join(', ') : '-';
+
+    document.getElementById('meReg').textContent = reg;
+    document.getElementById('meRoles').textContent = roles;
+  }
+
+  async function refreshMe() {
+    const token = getToken();
+    if (!token) {
+      setApiStatus(false, 'No token');
+      setMeView(null, null);
+      return;
+    }
+
+    let jwtPayload = null;
+    try { jwtPayload = decodeJwtPayload(token); } catch {}
+
+    try {
+      const res = await apiFetch('/api/account/me');
+      const text = await res.text();
+
+      if (!res.ok) {
+        setApiStatus(false, 'HTTP ' + res.status);
+        setLastResponse(text);
+        setMeView(null, jwtPayload);
+        return;
+      }
+
+      const me = text ? JSON.parse(text) : {};
+      setApiStatus(true, 'OK');
+      setLastResponse(text);
+      setMeView(me, jwtPayload);
+    } catch (e) {
+      setApiStatus(false, 'Error');
+      setLastResponse(String(e));
+      setMeView(null, jwtPayload);
+    }
+  }
+
+  async function setInitialPassword() {
+    const pwd = document.getElementById('password').value;
+    if (!pwd) {
+      setLastResponse('Please enter a password');
+      return;
+    }
+
+    try {
+      const res = await apiFetch('/api/auth/set-initial-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: pwd })
+      });
+
+      const text = await res.text();
+      setLastResponse('HTTP ' + res.status + '\n' + (text || '(empty body)'));
+      await refreshMe();
+    } catch (e) {
+      setLastResponse(String(e));
+    }
+  }
+
+  function login() {
+    window.location.href = '/oauth2/authorization/google';
+  }
+
+  function bootFromQuerystring() {
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get('token');
+    if (token) {
+      setToken(token);
+      params.delete('token');
+      const newUrl = window.location.pathname + (params.toString() ? ('?' + params.toString()) : '');
+      window.history.replaceState({}, '', newUrl);
+    }
+  }
+
+  document.getElementById('btnLogin').addEventListener('click', login);
+  document.getElementById('btnClear').addEventListener('click', () => setToken(''));
+  document.getElementById('btnMe').addEventListener('click', refreshMe);
+  document.getElementById('btnSetPassword').addEventListener('click', setInitialPassword);
+  document.getElementById('jwt').addEventListener('change', (e) => setToken(e.target.value.trim()));
+
+  bootFromQuerystring();
+  renderToken();
+  refreshMe();
+</script>
+</body>
+</html>

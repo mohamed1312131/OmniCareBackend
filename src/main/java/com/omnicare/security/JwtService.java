@@ -2,9 +2,7 @@ package com.omnicare.security;
 
 import com.omnicare.config.AppProperties;
 import org.springframework.security.oauth2.jwt.JwsHeader;
-import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.jwt.JwtClaimsSet;
-import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.JwtEncoder;
 import org.springframework.security.oauth2.jwt.JwtEncoderParameters;
 import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
@@ -14,23 +12,28 @@ import java.time.Instant;
 import java.util.UUID;
 import java.util.List;
 
+import com.omnicare.user.User;
+
 @Service
 public class JwtService {
 
     private final JwtEncoder jwtEncoder;
-    private final JwtDecoder jwtDecoder;
     private final long ttlSeconds;
 
-    public JwtService(JwtEncoder jwtEncoder, JwtDecoder jwtDecoder, AppProperties appProperties) {
+    public JwtService(JwtEncoder jwtEncoder, AppProperties appProperties) {
         this.jwtEncoder = jwtEncoder;
-        this.jwtDecoder = jwtDecoder;
         this.ttlSeconds = appProperties.jwt().ttlSeconds();
     }
 
-    public String createToken(String email, String name) {
+    public String createToken(User user) {
         Instant now = Instant.now();
         Instant expiresAt = now.plusSeconds(ttlSeconds);
         String jti = UUID.randomUUID().toString();
+
+        String email = user.getEmail();
+        String name = user.getName();
+        String role = user.getRole() == null ? "PATIENT" : user.getRole().name();
+        String registrationStatus = user.getRegistrationStatus() == null ? "PENDING_PASSWORD" : user.getRegistrationStatus().name();
 
         JwtClaimsSet claims = JwtClaimsSet.builder()
                 .issuer("omnicare")
@@ -40,14 +43,12 @@ public class JwtService {
                 .id(jti)
                 .claim("email", email)
                 .claim("name", name)
-                .claim("roles", List.of("USER"))
+                .claim("roles", List.of(role))
+                .claim("registrationStatus", registrationStatus)
                 .build();
 
         JwsHeader header = JwsHeader.with(MacAlgorithm.HS256).build();
         return jwtEncoder.encode(JwtEncoderParameters.from(header, claims)).getTokenValue();
     }
 
-    public Jwt decode(String token) {
-        return jwtDecoder.decode(token);
-    }
 }

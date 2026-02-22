@@ -2,6 +2,8 @@ package com.omnicare.security;
 
 import com.omnicare.user.User;
 import com.omnicare.user.UserRepository;
+import com.omnicare.user.RegistrationStatus;
+import com.omnicare.user.UserRole;
 import org.springframework.security.oauth2.client.oidc.userinfo.OidcUserRequest;
 import org.springframework.security.oauth2.client.oidc.userinfo.OidcUserService;
 import org.springframework.security.oauth2.core.OAuth2AuthenticationException;
@@ -35,6 +37,14 @@ public class OmnicareOidcUserService extends OidcUserService {
         User user = userRepository.findByEmail(email)
                 .orElseGet(() -> new User(email, resolvedName));
         user.setName(resolvedName);
+
+        if (user.getRole() == null) {
+            user.setRole(UserRole.PATIENT);
+        }
+        if (user.getRegistrationStatus() == null) {
+            user.setRegistrationStatus(RegistrationStatus.PENDING_PASSWORD);
+        }
+
         userRepository.save(user);
 
         return oidcUser;
