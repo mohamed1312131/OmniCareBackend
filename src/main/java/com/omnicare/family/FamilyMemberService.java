@@ -3,6 +3,7 @@ package com.omnicare.family;
 import com.omnicare.user.User;
 import com.omnicare.user.UserRepository;
 import com.omnicare.patient.PatientService;
+import com.omnicare.patient.PatientRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -21,11 +22,13 @@ public class FamilyMemberService {
     private final FamilyMemberRepository familyMemberRepository;
     private final UserRepository userRepository;
     private final PatientService patientService;
+    private final PatientRepository patientRepository;
 
-    public FamilyMemberService(FamilyMemberRepository familyMemberRepository, UserRepository userRepository, PatientService patientService) {
+    public FamilyMemberService(FamilyMemberRepository familyMemberRepository, UserRepository userRepository, PatientService patientService, PatientRepository patientRepository) {
         this.familyMemberRepository = familyMemberRepository;
         this.userRepository = userRepository;
         this.patientService = patientService;
+        this.patientRepository = patientRepository;
     }
 
     public record CreateRequest(String fullName, String relationship, LocalDate birthDate, String gender, Map<String, Object> medicalInfo) {
@@ -90,6 +93,7 @@ public class FamilyMemberService {
         FamilyMember member = familyMemberRepository.findByIdAndUserId(familyMemberId, user.getId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Family member not found"));
 
+        patientRepository.deleteByFamilyMemberId(member.getId());
         familyMemberRepository.delete(member);
     }
 

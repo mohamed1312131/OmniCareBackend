@@ -70,6 +70,10 @@
       overflow: hidden;
     }
 
+    #cardPassport {
+      overflow: visible;
+    }
+
     .cardHeader {
       display:flex;
       align-items:center;
@@ -129,6 +133,31 @@
       padding: 10px 12px;
       color: var(--text);
       width: 100%;
+    }
+
+    #currentMedSuggestions {
+      position: relative;
+      z-index: 10;
+      pointer-events: auto;
+      max-height: 320px;
+      overflow: auto;
+    }
+
+    #currentMedSuggestions [data-med-pick] {
+      pointer-events: auto;
+    }
+
+    .typeaheadWrap {
+      position: relative;
+      overflow: visible;
+    }
+
+    .typeaheadWrap .typeaheadBox {
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: calc(100% + 8px);
+      z-index: 50;
     }
 
     textarea {
@@ -409,11 +438,13 @@
 
             <div style="margin-top:12px;">
               <label class="small">Current medications</label>
-              <div class="kv" style="margin-top:10px;">
+              <div class="kv" style="margin-top:10px; position: relative;">
                 <div>Search</div>
                 <div>
-                  <input id="currentMedSearch" placeholder="Start typing medication name..." />
-                  <div id="currentMedSuggestions" class="card" style="display:none; margin-top:8px; padding:10px; border-radius: 10px; border-color: rgba(34,48,85,0.55); background: rgba(7,11,20,0.45);"></div>
+                  <div class="typeaheadWrap">
+                    <input id="currentMedSearch" placeholder="Start typing medication name..." />
+                    <div id="currentMedSuggestions" class="card typeaheadBox" style="display:none; padding:10px; border-radius: 10px; border-color: rgba(34,48,85,0.55); background: rgba(7,11,20,0.45); position: absolute; z-index: 1000;"></div>
+                  </div>
                 </div>
               </div>
               <div class="small" style="margin-top:8px;">Pick from suggestions; we store <code>medicationId</code> automatically. Server validates IDs against the <code>medications</code> table.</div>
@@ -1834,7 +1865,10 @@
 
     bind('currentMedSuggestions', 'click', (e) => {
       const card = e.target && e.target.closest ? e.target.closest('[data-med-pick]') : null;
-      if (!card) return;
+      if (!card) {
+        setLastResponse('Med pick: click ignored (no [data-med-pick] target)');
+        return;
+      }
       const id = card.getAttribute('data-med-pick');
       const name = card.getAttribute('data-med-name') || 'Medication';
       const dci = (card.getAttribute('data-med-dci') || '').trim();

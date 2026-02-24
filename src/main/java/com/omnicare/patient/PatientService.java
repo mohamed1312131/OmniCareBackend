@@ -16,11 +16,13 @@ public class PatientService {
 
     @Transactional
     public Patient ensureForUser(User user) {
-        return patientRepository.findByUserId(user.getId()).orElseGet(() -> patientRepository.save(Patient.forUser(user)));
+        return patientRepository.findByUserId(user.getId())
+                .orElseGet(() -> patientRepository.saveAndFlush(Patient.forUser(user)));
     }
 
     @Transactional
     public Patient ensureForFamilyMember(User ownerUser, FamilyMember familyMember) {
-        return patientRepository.findByFamilyMemberId(familyMember.getId()).orElseGet(() -> patientRepository.save(Patient.forFamilyMember(ownerUser, familyMember)));
+        return patientRepository.findByFamilyMemberId(familyMember.getId())
+                .orElseGet(() -> patientRepository.saveAndFlush(Patient.forFamilyMember(ownerUser, familyMember)));
     }
 }

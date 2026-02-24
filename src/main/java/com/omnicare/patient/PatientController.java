@@ -18,6 +18,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
+import java.util.ArrayList;
 import java.util.UUID;
 
 @RestController
@@ -27,14 +28,12 @@ public class PatientController {
     private final UserRepository userRepository;
     private final FamilyMemberRepository familyMemberRepository;
     private final PatientService patientService;
-    private final PatientRepository patientRepository;
     private final PatientAllergyService patientAllergyService;
 
-    public PatientController(UserRepository userRepository, FamilyMemberRepository familyMemberRepository, PatientService patientService, PatientRepository patientRepository, PatientAllergyService patientAllergyService) {
+    public PatientController(UserRepository userRepository, FamilyMemberRepository familyMemberRepository, PatientService patientService, PatientAllergyService patientAllergyService) {
         this.userRepository = userRepository;
         this.familyMemberRepository = familyMemberRepository;
         this.patientService = patientService;
-        this.patientRepository = patientRepository;
         this.patientAllergyService = patientAllergyService;
     }
 
@@ -57,15 +56,17 @@ public class PatientController {
     }
 
     @GetMapping
-    @Transactional(readOnly = true)
+    @Transactional
     public List<PatientSummary> list(Authentication authentication) {
         String email = requireEmail(authentication);
         User owner = userRepository.findByEmail(email).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
 
-        patientService.ensureForUser(owner);
-        familyMemberRepository.findAllByUserId(owner.getId()).forEach(fm -> patientService.ensureForFamilyMember(owner, fm));
+        List<Patient> ensured = new ArrayList<>();
+        ensured.add(patientService.ensureForUser(owner));
+        familyMemberRepository.findAllByUserId(owner.getId())
+                .forEach(fm -> ensured.add(patientService.ensureForFamilyMember(owner, fm)));
 
-        return patientRepository.findAllByOwnerUserId(owner.getId()).stream().map(PatientSummary::from).toList();
+        return ensured.stream().map(PatientSummary::from).toList();
     }
 
     @GetMapping("/{patientId}/allergies")
