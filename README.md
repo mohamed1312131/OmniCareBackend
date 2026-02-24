@@ -9,7 +9,7 @@
 3) Run:
 
 ```powershell
-./run-dev.ps1
+.\run-dev.ps1
 ```
 
 ## Important
@@ -40,6 +40,25 @@
 - Most `/api/**` endpoints return `403` until the user becomes `ACTIVE`.
 
 ## (Optional) Backend-only test
+
+### Email + password (no Google)
+
+```powershell
+$registerBody = @{ email = "test2@example.com"; name = "Test Two"; password = "password" } | ConvertTo-Json
+try {
+  Invoke-RestMethod -Method Post -Uri "http://localhost:8080/api/auth/register" -ContentType "application/json" -Body $registerBody | Out-Null
+} catch {
+}
+
+$loginBody = @{ email = "test2@example.com"; password = "password" } | ConvertTo-Json
+$login = Invoke-RestMethod -Method Post -Uri "http://localhost:8080/api/auth/login" -ContentType "application/json" -Body $loginBody
+$token = $login.token
+
+if (-not $token) { throw "No token returned" }
+
+$patchBody = @{ name = "Test Two Renamed" } | ConvertTo-Json
+Invoke-RestMethod -Method Patch -Uri "http://localhost:8080/api/users/me" -ContentType "application/json" -Headers @{ Authorization = "Bearer $token" } -Body $patchBody
+```
 
 ```powershell
 $token = "<paste token>"

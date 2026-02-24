@@ -38,6 +38,8 @@ public class RegistrationStatusFilter extends OncePerRequestFilter {
 
         return path.equals("/api/auth/set-initial-password")
                 || path.equals("/api/account/me")
+                || path.equals("/api/auth/login")
+                || path.equals("/api/auth/register")
                 || path.equals("/api/auth/logout");
     }
 
