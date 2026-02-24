@@ -14,6 +14,7 @@
 
 ## Important
 - `dev.env.ps1` contains secrets. Do not commit it. It is ignored by git.
+- Email verification links use `VERIFY_BASE_URL`. In production set it to your deployed backend URL (e.g. `https://api.yoursite.com`).
 
 ## Test login
 
@@ -49,6 +50,8 @@ try {
   Invoke-RestMethod -Method Post -Uri "http://localhost:8080/api/auth/register" -ContentType "application/json" -Body $registerBody | Out-Null
 } catch {
 }
+
+# Check Mailtrap inbox and open the verification link (GET /api/auth/verify-email?token=...)
 
 $loginBody = @{ email = "test2@example.com"; password = "password" } | ConvertTo-Json
 $login = Invoke-RestMethod -Method Post -Uri "http://localhost:8080/api/auth/login" -ContentType "application/json" -Body $loginBody

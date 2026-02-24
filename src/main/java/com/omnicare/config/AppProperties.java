@@ -6,7 +6,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 public record AppProperties(
         Cors cors,
         OAuth2 oauth2,
-        Jwt jwt
+        Jwt jwt,
+        Mail mail
 ) {
 
     public record Cors(String allowedOrigin) {
@@ -16,5 +17,8 @@ public record AppProperties(
     }
 
     public record Jwt(String secret, long ttlSeconds) {
+    }
+
+    public record Mail(String from, String verifyBaseUrl) {
     }
 }

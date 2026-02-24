@@ -51,6 +51,7 @@ public class SecurityConfig {
                         .requestMatchers("/", "/error", "/login/**", "/oauth2/**", "/auth/dev/**", "/dev/**").permitAll()
                         .requestMatchers("/api/auth/login").permitAll()
                         .requestMatchers("/api/auth/register").permitAll()
+                        .requestMatchers("/api/auth/verify-email").permitAll()
                         .requestMatchers("/api/**").authenticated()
                         .anyRequest().authenticated()
                 )

@@ -26,6 +26,10 @@ public class DatabaseUserDetailsService implements UserDetailsService {
         User user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new UsernameNotFoundException("User not found"));
 
+        if (!user.isEmailVerified()) {
+            throw new UsernameNotFoundException("Email not verified");
+        }
+
         String passwordHash = user.getPasswordHash();
         if (passwordHash == null || passwordHash.isBlank()) {
             throw new UsernameNotFoundException("User has no password set");

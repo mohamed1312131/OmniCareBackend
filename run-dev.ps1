@@ -14,6 +14,12 @@ if ($env:GOOGLE_CLIENT_ID) { $env:GOOGLE_CLIENT_ID = $env:GOOGLE_CLIENT_ID.Trim(
 if ($env:GOOGLE_CLIENT_SECRET) { $env:GOOGLE_CLIENT_SECRET = $env:GOOGLE_CLIENT_SECRET.Trim() }
 if ($env:JWT_SECRET) { $env:JWT_SECRET = $env:JWT_SECRET.Trim() }
 
+$listener = Get-NetTCPConnection -LocalPort 8080 -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1
+if ($listener) {
+  Write-Host "Port 8080 is already in use (PID $($listener.OwningProcess)). Stop the existing process or change server.port." -ForegroundColor Yellow
+  exit 1
+}
+
 docker compose up -d
 
 mvn spring-boot:run

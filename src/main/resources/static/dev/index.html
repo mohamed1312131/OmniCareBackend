@@ -3,7 +3,11 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="refresh" content="0; url=/dev/patient.html" />
   <title>Omnicare Dev Auth UI</title>
+  <script>
+    window.location.replace('/dev/patient.html');
+  </script>
   <style>
     :root { --bg:#0b1220; --card:#121b2f; --text:#e9eefc; --muted:#aab6da; --line:#223055; --accent:#4f8cff; --danger:#ff5c7a; --ok:#38d996; }
     body { margin:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial; background: linear-gradient(180deg, var(--bg), #070b14); color: var(--text); }
@@ -39,6 +43,7 @@
     <div class="row">
       <span class="pill" id="pillAuth"><span class="dot" id="dotAuth"></span><span id="authText">No token</span></span>
       <span class="pill"><span class="dot" id="dotApi"></span><span id="apiText">API unknown</span></span>
+      <span class="pill"><a href="/dev/dashboard.html" style="color:inherit;text-decoration:none;">Dev Dashboard</a></span>
       <span class="pill"><a href="/dev/password.html" style="color:inherit;text-decoration:none;">Email/Password Dashboard</a></span>
     </div>
 

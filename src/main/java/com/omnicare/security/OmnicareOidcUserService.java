@@ -2,6 +2,7 @@ package com.omnicare.security;
 
 import com.omnicare.user.User;
 import com.omnicare.user.UserRepository;
+import com.omnicare.patient.PatientService;
 import com.omnicare.user.RegistrationStatus;
 import com.omnicare.user.UserRole;
 import org.springframework.security.oauth2.client.oidc.userinfo.OidcUserRequest;
@@ -15,9 +16,11 @@ import org.springframework.transaction.annotation.Transactional;
 public class OmnicareOidcUserService extends OidcUserService {
 
     private final UserRepository userRepository;
+    private final PatientService patientService;
 
-    public OmnicareOidcUserService(UserRepository userRepository) {
+    public OmnicareOidcUserService(UserRepository userRepository, PatientService patientService) {
         this.userRepository = userRepository;
+        this.patientService = patientService;
     }
 
     @Override
@@ -45,7 +48,12 @@ public class OmnicareOidcUserService extends OidcUserService {
             user.setRegistrationStatus(RegistrationStatus.PENDING_PASSWORD);
         }
 
-        userRepository.save(user);
+        if (!user.isEmailVerified()) {
+            user.setEmailVerified(true);
+        }
+
+        user = userRepository.save(user);
+        patientService.ensureForUser(user);
 
         return oidcUser;
     }

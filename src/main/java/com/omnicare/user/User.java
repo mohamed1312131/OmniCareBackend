@@ -1,5 +1,6 @@
 package com.omnicare.user;
 
+import com.omnicare.passport.BloodGroup;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -7,7 +8,11 @@ import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
+import java.time.Instant;
+import java.util.Map;
 import java.util.UUID;
 
 @Entity
@@ -34,6 +39,23 @@ public class User {
     @Enumerated(EnumType.STRING)
     @Column(name = "registration_status")
     private RegistrationStatus registrationStatus;
+
+    @Column(name = "email_verified", nullable = false)
+    private boolean emailVerified;
+
+    @Column(name = "email_verification_token_hash")
+    private String emailVerificationTokenHash;
+
+    @Column(name = "email_verification_expires_at")
+    private Instant emailVerificationExpiresAt;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "blood_group")
+    private BloodGroup bloodGroup;
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "medical_info", columnDefinition = "jsonb")
+    private Map<String, Object> medicalInfo;
 
     protected User() {
     }
@@ -85,5 +107,45 @@ public class User {
 
     public void setRegistrationStatus(RegistrationStatus registrationStatus) {
         this.registrationStatus = registrationStatus;
+    }
+
+    public boolean isEmailVerified() {
+        return emailVerified;
+    }
+
+    public void setEmailVerified(boolean emailVerified) {
+        this.emailVerified = emailVerified;
+    }
+
+    public String getEmailVerificationTokenHash() {
+        return emailVerificationTokenHash;
+    }
+
+    public void setEmailVerificationTokenHash(String emailVerificationTokenHash) {
+        this.emailVerificationTokenHash = emailVerificationTokenHash;
+    }
+
+    public Instant getEmailVerificationExpiresAt() {
+        return emailVerificationExpiresAt;
+    }
+
+    public void setEmailVerificationExpiresAt(Instant emailVerificationExpiresAt) {
+        this.emailVerificationExpiresAt = emailVerificationExpiresAt;
+    }
+
+    public BloodGroup getBloodGroup() {
+        return bloodGroup;
+    }
+
+    public void setBloodGroup(BloodGroup bloodGroup) {
+        this.bloodGroup = bloodGroup;
+    }
+
+    public Map<String, Object> getMedicalInfo() {
+        return medicalInfo;
+    }
+
+    public void setMedicalInfo(Map<String, Object> medicalInfo) {
+        this.medicalInfo = medicalInfo;
     }
 }

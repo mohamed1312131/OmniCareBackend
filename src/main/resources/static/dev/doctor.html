@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Doctor Dashboard</title>
+</head>
+<body>
+<script>
+  (function () {
+    const LS_DOCTOR = 'omnicare.jwt.doctor';
+    const LS_ACTIVE = 'omnicare.jwt.active';
+
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get('token');
+    if (token) {
+      localStorage.setItem(LS_DOCTOR, token);
+      localStorage.setItem(LS_ACTIVE, 'doctor');
+      params.delete('token');
+      const next = '/dev/dashboard.html?mode=doctor' + (params.toString() ? ('&' + params.toString()) : '');
+      window.location.replace(next);
+      return;
+    }
+
+    localStorage.setItem(LS_ACTIVE, 'doctor');
+    window.location.replace('/dev/dashboard.html?mode=doctor');
+  })();
+</script>
+<noscript>
+  <a href="/dev/dashboard.html?mode=doctor">Continue</a>
+</noscript>
+</body>
+</html>

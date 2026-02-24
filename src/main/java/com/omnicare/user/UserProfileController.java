@@ -11,6 +11,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.util.Map;
+
 @RestController
 @RequestMapping("/api/users")
 public class UserProfileController {
@@ -21,10 +23,10 @@ public class UserProfileController {
         this.userRepository = userRepository;
     }
 
-    public record UpdateMeRequest(String name) {
+    public record UpdateMeRequest(String name, Map<String, Object> medicalInfo) {
     }
 
-    public record MeProfileResponse(String email, String name) {
+    public record MeProfileResponse(String email, String name, Map<String, Object> medicalInfo) {
     }
 
     @PatchMapping("/me")
@@ -51,10 +53,14 @@ public class UserProfileController {
                 }
                 user.setName(trimmed);
             }
+
+            if (request.medicalInfo() != null) {
+                user.setMedicalInfo(request.medicalInfo());
+            }
         }
 
         userRepository.save(user);
-        return new MeProfileResponse(user.getEmail(), user.getName());
+        return new MeProfileResponse(user.getEmail(), user.getName(), user.getMedicalInfo());
     }
 
     private Jwt extractJwt(Authentication authentication) {

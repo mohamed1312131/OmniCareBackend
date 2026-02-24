@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Patient Dashboard</title>
+</head>
+<body>
+<script>
+  (function () {
+    const LS_PATIENT = 'omnicare.jwt.patient';
+    const LS_ACTIVE = 'omnicare.jwt.active';
+
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get('token');
+    if (token) {
+      localStorage.setItem(LS_PATIENT, token);
+      localStorage.setItem(LS_ACTIVE, 'patient');
+      params.delete('token');
+      const next = '/dev/dashboard.html?mode=patient' + (params.toString() ? ('&' + params.toString()) : '');
+      window.location.replace(next);
+      return;
+    }
+
+    localStorage.setItem(LS_ACTIVE, 'patient');
+    window.location.replace('/dev/dashboard.html?mode=patient');
+  })();
+</script>
+<noscript>
+  <a href="/dev/dashboard.html?mode=patient">Continue</a>
+</noscript>
+</body>
+</html>

@@ -2,6 +2,7 @@ package com.omnicare.auth;
 
 import com.omnicare.security.JwtService;
 import com.omnicare.security.TokenRevocationService;
+import com.omnicare.patient.PatientService;
 import com.omnicare.user.RegistrationStatus;
 import com.omnicare.user.User;
 import com.omnicare.user.UserRepository;
@@ -14,9 +15,13 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -31,19 +36,25 @@ public class AuthController {
     private final PasswordEncoder passwordEncoder;
     private final AuthenticationManager authenticationManager;
     private final JwtService jwtService;
+    private final EmailVerificationService emailVerificationService;
+    private final PatientService patientService;
 
     public AuthController(
             TokenRevocationService tokenRevocationService,
             UserRepository userRepository,
             PasswordEncoder passwordEncoder,
             AuthenticationManager authenticationManager,
-            JwtService jwtService
+            JwtService jwtService,
+            EmailVerificationService emailVerificationService,
+            PatientService patientService
     ) {
         this.tokenRevocationService = tokenRevocationService;
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.authenticationManager = authenticationManager;
         this.jwtService = jwtService;
+        this.emailVerificationService = emailVerificationService;
+        this.patientService = patientService;
     }
 
     public record SetInitialPasswordRequest(String password) {
@@ -53,6 +64,9 @@ public class AuthController {
     }
 
     public record LoginResponse(String token) {
+    }
+
+    public record RegisterResponse(String message) {
     }
 
     public record RegisterRequest(String email, String name, String password) {
@@ -76,13 +90,17 @@ public class AuthController {
         User user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid credentials"));
 
+        if (!user.isEmailVerified()) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Email not verified");
+        }
+
         String token = jwtService.createToken(user);
         return new LoginResponse(token);
     }
 
     @PostMapping("/register")
     @Transactional
-    public LoginResponse register(@RequestBody RegisterRequest request) {
+    public RegisterResponse register(@RequestBody RegisterRequest request) {
         if (request == null || request.email() == null || request.email().isBlank() || request.password() == null || request.password().isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "email and password are required");
         }
@@ -99,10 +117,35 @@ public class AuthController {
         user.setPasswordHash(passwordEncoder.encode(request.password()));
         user.setRole(UserRole.PATIENT);
         user.setRegistrationStatus(RegistrationStatus.ACTIVE);
+        user.setEmailVerified(false);
         user = userRepository.save(user);
 
-        String token = jwtService.createToken(user);
-        return new LoginResponse(token);
+        patientService.ensureForUser(user);
+
+        EmailVerificationService.NewToken token = emailVerificationService.issueVerificationToken(user);
+        emailVerificationService.sendVerificationEmail(user, token.rawToken());
+
+        return new RegisterResponse("Verification email sent");
+    }
+
+    @GetMapping("/verify-email")
+    public Object verifyEmail(
+            @RequestParam("token") String token,
+            @RequestParam(value = "redirect", required = false) String redirect
+    ) {
+        if ("1".equals(redirect)) {
+            User user = emailVerificationService.verifyTokenAndReturnUserOrThrow(token);
+            patientService.ensureForUser(user);
+            String jwt = jwtService.createToken(user);
+
+            String location = "/dev/password.html?token=" + java.net.URLEncoder.encode(jwt, java.nio.charset.StandardCharsets.UTF_8);
+            HttpHeaders headers = new HttpHeaders();
+            headers.add(HttpHeaders.LOCATION, location);
+            return new ResponseEntity<>(headers, HttpStatus.FOUND);
+        }
+
+        emailVerificationService.verifyTokenOrThrow(token);
+        return new RegisterResponse("Email verified");
     }
 
     @PostMapping("/logout")
