@@ -1,5 +1,7 @@
 package com.omnicare.auth;
 
+import com.omnicare.doctor.Doctor;
+import com.omnicare.doctor.DoctorRepository;
 import com.omnicare.user.RegistrationStatus;
 import com.omnicare.user.User;
 import com.omnicare.user.UserRepository;
@@ -28,11 +30,13 @@ public class DevAuthController {
     private final RequestMappingHandlerMapping handlerMapping;
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
+    private final DoctorRepository doctorRepository;
 
-    public DevAuthController(RequestMappingHandlerMapping handlerMapping, UserRepository userRepository, PasswordEncoder passwordEncoder) {
+    public DevAuthController(RequestMappingHandlerMapping handlerMapping, UserRepository userRepository, PasswordEncoder passwordEncoder, DoctorRepository doctorRepository) {
         this.handlerMapping = handlerMapping;
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
+        this.doctorRepository = doctorRepository;
     }
 
     public record CreateDoctorRequest(String email, String name, String password) {
@@ -45,6 +49,12 @@ public class DevAuthController {
     }
 
     public record CreatePatientResponse(String message) {
+    }
+
+    public record CreateAdminRequest(String email, String name, String password) {
+    }
+
+    public record CreateAdminResponse(String message) {
     }
 
     @PostMapping(value = "/create-doctor")
@@ -67,6 +77,10 @@ public class DevAuthController {
         user.setEmailVerified(true);
         user.setPasswordHash(passwordEncoder.encode(request.password()));
         userRepository.save(user);
+
+        if (doctorRepository.findByUserId(user.getId()).isEmpty()) {
+            doctorRepository.save(new Doctor(user));
+        }
 
         return new CreateDoctorResponse("Doctor created and verified");
     }
@@ -93,6 +107,30 @@ public class DevAuthController {
         userRepository.save(user);
 
         return new CreatePatientResponse("Patient created and verified");
+    }
+
+    @PostMapping(value = "/create-admin")
+    @Transactional
+    public CreateAdminResponse createAdmin(@RequestBody CreateAdminRequest request) {
+        if (request == null || request.email() == null || request.email().isBlank() || request.password() == null || request.password().isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "email and password are required");
+        }
+
+        String email = request.email().trim().toLowerCase();
+        String resolvedName = (request.name() == null || request.name().isBlank()) ? email : request.name().trim();
+
+        if (userRepository.findByEmail(email).isPresent()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Email already exists");
+        }
+
+        User user = new User(email, resolvedName);
+        user.setRole(UserRole.ADMIN);
+        user.setRegistrationStatus(RegistrationStatus.ACTIVE);
+        user.setEmailVerified(true);
+        user.setPasswordHash(passwordEncoder.encode(request.password()));
+        userRepository.save(user);
+
+        return new CreateAdminResponse("Admin created and verified");
     }
 
     @GetMapping(value = "/callback", produces = MediaType.TEXT_HTML_VALUE)

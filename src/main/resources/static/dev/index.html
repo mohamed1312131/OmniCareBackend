@@ -3,271 +3,732 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta http-equiv="refresh" content="0; url=/dev/patient.html" />
-  <title>Omnicare Dev Auth UI</title>
-  <script>
-    window.location.replace('/dev/patient.html');
-  </script>
+  <title>OmniCare Dev Console</title>
   <style>
-    :root { --bg:#0b1220; --card:#121b2f; --text:#e9eefc; --muted:#aab6da; --line:#223055; --accent:#4f8cff; --danger:#ff5c7a; --ok:#38d996; }
-    body { margin:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial; background: linear-gradient(180deg, var(--bg), #070b14); color: var(--text); }
-    .wrap { max-width: 980px; margin: 0 auto; padding: 28px 18px 64px; }
-    h1 { font-size: 22px; margin: 0 0 8px; }
-    p { margin: 6px 0; color: var(--muted); }
-    .grid { display:grid; grid-template-columns: 1fr; gap: 14px; margin-top: 18px; }
-    @media (min-width: 920px){ .grid{ grid-template-columns: 1.1fr 0.9fr; } }
-    .card { background: rgba(18,27,47,0.9); border: 1px solid rgba(34,48,85,0.7); border-radius: 14px; padding: 14px; }
-    .row { display:flex; gap: 10px; flex-wrap: wrap; align-items:center; }
-    button { background: var(--accent); border:none; color:white; border-radius: 10px; padding: 10px 12px; cursor:pointer; font-weight: 600; }
-    button.secondary { background: transparent; border: 1px solid rgba(34,48,85,0.9); color: var(--text); }
-    button.danger { background: var(--danger); }
-    input { background: rgba(7,11,20,0.7); border: 1px solid rgba(34,48,85,0.9); border-radius: 10px; padding: 10px 12px; color: var(--text); width: 100%; }
-    textarea { width: 100%; min-height: 190px; background: rgba(7,11,20,0.7); border: 1px solid rgba(34,48,85,0.9); border-radius: 10px; padding: 10px 12px; color: var(--text); font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; font-size: 12px; }
-    pre { white-space: pre-wrap; word-break: break-word; margin: 0; }
-    code { background: rgba(7,11,20,0.7); padding: 2px 6px; border-radius: 8px; border: 1px solid rgba(34,48,85,0.9); }
-    .pill { display:inline-flex; align-items:center; gap: 8px; padding: 6px 10px; border-radius: 999px; border: 1px solid rgba(34,48,85,0.9); color: var(--muted); }
-    .dot { width: 10px; height: 10px; border-radius: 50%; background: #667; }
-    .dot.ok { background: var(--ok); }
-    .dot.bad { background: var(--danger); }
-    .small { font-size: 12px; color: var(--muted); }
-    .kv { display:grid; grid-template-columns: 120px 1fr; gap: 6px 10px; font-size: 13px; margin-top: 10px; }
-    .kv div:nth-child(odd) { color: var(--muted); }
-    .warn { color: #ffd479; }
+    :root {
+      --bg: #0b1220;
+      --panel: rgba(255, 255, 255, 0.06);
+      --panel2: rgba(255, 255, 255, 0.04);
+      --text: rgba(255, 255, 255, 0.92);
+      --muted: rgba(255, 255, 255, 0.65);
+      --border: rgba(255, 255, 255, 0.12);
+      --accent: #6ee7ff;
+      --good: #2ee59d;
+      --bad: #ff6b6b;
+      --warn: #ffd166;
+      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      --sans: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
+      --shadow: 0 12px 40px rgba(0,0,0,0.35);
+      --radius: 14px;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: radial-gradient(1200px 700px at 20% 10%, rgba(110, 231, 255, 0.10), transparent 60%),
+                  radial-gradient(1200px 700px at 80% 0%, rgba(46, 229, 157, 0.10), transparent 50%),
+                  var(--bg);
+      color: var(--text);
+      font-family: var(--sans);
+      line-height: 1.35;
+    }
+
+    .wrap { max-width: 1200px; margin: 26px auto; padding: 0 16px; }
+
+    header {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 14px;
+    }
+
+    h1 { margin: 0; font-size: 20px; letter-spacing: 0.3px; }
+    .sub { margin: 6px 0 0; color: var(--muted); font-size: 12px; }
+
+    .topbar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      border: 1px solid var(--border);
+      background: var(--panel);
+      padding: 8px 10px;
+      border-radius: 999px;
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(10px);
+    }
+
+    .pill strong { font-size: 12px; }
+    .pill span { font-size: 12px; color: var(--muted); font-family: var(--mono); }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1.1fr 0.9fr;
+      gap: 14px;
+    }
+
+    @media (max-width: 980px) {
+      .grid { grid-template-columns: 1fr; }
+      header { align-items: flex-start; flex-direction: column; }
+      .topbar { justify-content: flex-start; }
+    }
+
+    .card {
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: linear-gradient(180deg, rgba(255,255,255,0.07), rgba(255,255,255,0.04));
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(10px);
+      overflow: hidden;
+    }
+
+    .card .hd {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--border);
+      background: rgba(0,0,0,0.08);
+    }
+
+    .card .hd h2 {
+      margin: 0;
+      font-size: 13px;
+      letter-spacing: 0.35px;
+      text-transform: uppercase;
+      color: rgba(255,255,255,0.82);
+    }
+
+    .card .bd { padding: 14px; }
+
+    .row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+
+    .row.one { grid-template-columns: 1fr; }
+
+    label { display: block; font-size: 12px; color: var(--muted); margin: 0 0 6px; }
+
+    input, select, textarea {
+      width: 100%;
+      border: 1px solid var(--border);
+      background: rgba(0,0,0,0.20);
+      color: var(--text);
+      padding: 10px 10px;
+      border-radius: 12px;
+      outline: none;
+      font-size: 13px;
+    }
+
+    textarea { min-height: 84px; font-family: var(--mono); font-size: 12px; }
+
+    .btns { display: flex; gap: 8px; flex-wrap: wrap; }
+    button {
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,0.06);
+      color: var(--text);
+      padding: 9px 10px;
+      border-radius: 12px;
+      cursor: pointer;
+      font-size: 13px;
+    }
+
+    button.primary { border-color: rgba(110,231,255,0.45); background: rgba(110,231,255,0.10); }
+    button.good { border-color: rgba(46,229,157,0.45); background: rgba(46,229,157,0.10); }
+    button.bad { border-color: rgba(255,107,107,0.45); background: rgba(255,107,107,0.10); }
+
+    button:disabled { opacity: 0.55; cursor: not-allowed; }
+
+    .hint { color: var(--muted); font-size: 12px; margin-top: 8px; }
+
+    .log {
+      border: 1px solid var(--border);
+      background: rgba(0,0,0,0.20);
+      border-radius: 12px;
+      padding: 10px;
+      font-family: var(--mono);
+      font-size: 12px;
+      overflow: auto;
+      white-space: pre-wrap;
+      min-height: 220px;
+      max-height: 560px;
+    }
+
+    .statusline { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 10px; }
+    .badge {
+      display: inline-flex;
+      gap: 8px;
+      align-items: center;
+      padding: 6px 10px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: var(--panel2);
+      font-size: 12px;
+      color: rgba(255,255,255,0.85);
+    }
+
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--warn); }
+    .dot.good { background: var(--good); }
+    .dot.bad { background: var(--bad); }
+
+    .split { display: grid; grid-template-columns: 1fr; gap: 12px; }
+
+    .links a { color: var(--accent); text-decoration: none; font-size: 12px; }
+    .links a:hover { text-decoration: underline; }
   </style>
 </head>
 <body>
   <div class="wrap">
-    <h1>Omnicare Dev Auth UI</h1>
-    <p>Visualizes Google OAuth2 → JWT → onboarding status.</p>
+    <header>
+      <div>
+        <h1>OmniCare Dev Console</h1>
+        <div class="sub">Three-mode token manager + API console for validating access control and CRUD flows.</div>
+      </div>
 
-    <div class="row">
-      <span class="pill" id="pillAuth"><span class="dot" id="dotAuth"></span><span id="authText">No token</span></span>
-      <span class="pill"><span class="dot" id="dotApi"></span><span id="apiText">API unknown</span></span>
-      <span class="pill"><a href="/dev/dashboard.html" style="color:inherit;text-decoration:none;">Dev Dashboard</a></span>
-      <span class="pill"><a href="/dev/password.html" style="color:inherit;text-decoration:none;">Email/Password Dashboard</a></span>
-    </div>
+      <div class="topbar">
+        <div class="pill"><strong>Base URL</strong><span id="baseUrl">(auto)</span></div>
+        <div class="pill"><strong>Active Mode</strong><span id="activeMode">(none)</span></div>
+      </div>
+    </header>
 
     <div class="grid">
       <div class="card">
-        <h2 style="margin:0 0 10px; font-size:16px;">1) Login + Token</h2>
-        <div class="row">
-          <button id="btnLogin">Login with Google</button>
-          <button id="btnClear" class="secondary">Clear token</button>
-          <button id="btnMe" class="secondary">Refresh /api/account/me</button>
-        </div>
+        <div class="hd"><h2>Identity & Tokens</h2><div class="links"><a href="/auth/dev/mappings" target="_blank" rel="noreferrer">mappings</a></div></div>
+        <div class="bd">
+          <div class="row">
+            <div>
+              <label>Mode</label>
+              <select id="mode">
+                <option value="patient">Patient</option>
+                <option value="doctor">Doctor</option>
+                <option value="admin">Admin</option>
+              </select>
+            </div>
+            <div>
+              <label>JWT (paste or auto-filled)</label>
+              <input id="token" placeholder="Bearer token" />
+            </div>
+          </div>
 
-        <div style="margin-top:10px;" class="small">
-          Stored in <code>localStorage</code> as <code>omnicare.jwt</code>.
-        </div>
+          <div class="row">
+            <div>
+              <label>Email</label>
+              <input id="email" placeholder="you@dev.local" />
+            </div>
+            <div>
+              <label>Password</label>
+              <input id="password" type="password" value="Passw0rd!123" />
+            </div>
+          </div>
 
-        <div style="margin-top:12px;">
-          <label class="small" for="jwt">JWT</label>
-          <textarea id="jwt" spellcheck="false" placeholder="JWT will appear here after login..."></textarea>
-        </div>
+          <div class="row">
+            <div>
+              <label>Name</label>
+              <input id="name" placeholder="Display name" />
+            </div>
+            <div>
+              <label>Quick Save</label>
+              <div class="btns">
+                <button id="btnUse" class="primary">Use Token</button>
+                <button id="btnClear" class="bad">Clear</button>
+              </div>
+            </div>
+          </div>
 
-        <div style="margin-top:12px;">
-          <label class="small">Decoded payload</label>
-          <pre id="decoded" class="card" style="padding:10px; border-radius: 10px; border-color: rgba(34,48,85,0.55); background: rgba(7,11,20,0.45);"></pre>
+          <div class="btns">
+            <button id="btnCreate" class="good">Create Verified Account</button>
+            <button id="btnLogin" class="primary">Login → Get JWT</button>
+            <button id="btnWhoAmI">GET /api/account/me</button>
+          </div>
+
+          <div class="statusline">
+            <div class="badge"><span class="dot" id="dotPatient"></span>patient</div>
+            <div class="badge"><span class="dot" id="dotDoctor"></span>doctor</div>
+            <div class="badge"><span class="dot" id="dotAdmin"></span>admin</div>
+          </div>
+
+          <div class="hint">
+            Stored tokens:
+            <span style="font-family:var(--mono)">omnicare.jwt.patient</span>,
+            <span style="font-family:var(--mono)">omnicare.jwt.doctor</span>,
+            <span style="font-family:var(--mono)">omnicare.jwt.admin</span>,
+            <span style="font-family:var(--mono)">omnicare.jwt.active</span>
+          </div>
         </div>
       </div>
 
       <div class="card">
-        <h2 style="margin:0 0 10px; font-size:16px;">2) Account state</h2>
-        <div class="kv">
-          <div>Email</div><div id="meEmail">-</div>
-          <div>Name</div><div id="meName">-</div>
-          <div>Has password</div><div id="meHasPassword">-</div>
-          <div>Registration status</div><div id="meReg">-</div>
-          <div>Roles</div><div id="meRoles">-</div>
+        <div class="hd"><h2>Quick Actions (CRUD & Access)</h2></div>
+        <div class="bd">
+          <div class="split">
+            <div>
+              <label>Doctor (Professional Portal)</label>
+              <div class="btns">
+                <button id="btnSeedProfessional">POST /auth/dev/seed-professional</button>
+                <button id="btnDoctorProfile">GET /api/doctor/profile</button>
+                <button id="btnGoLive">PATCH /api/doctor/status (GO LIVE)</button>
+                <button id="btnDoctorHistory">GET /api/doctor/history</button>
+                <button id="btnDoctorRevenue">GET /api/doctor/revenue</button>
+              </div>
+              <div class="hint">Uses active token; doctor endpoints require DOCTOR.</div>
+            </div>
+
+            <div>
+              <label>Patient (Core)</label>
+              <div class="btns">
+                <button id="btnPatients">GET /api/patients</button>
+                <button id="btnFamilyCreate">POST /api/family</button>
+                <button id="btnFamilyList">GET /api/family</button>
+              </div>
+            </div>
+
+            <div>
+              <label>Doctor Search</label>
+              <div class="row">
+                <div>
+                  <input id="specialty" placeholder="specialty filter (optional)" />
+                </div>
+                <div>
+                  <button id="btnDoctorSearch">GET /api/doctors</button>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <label>Raw API Console</label>
+              <div class="row">
+                <div>
+                  <label>Method</label>
+                  <select id="apiMethod">
+                    <option>GET</option>
+                    <option>POST</option>
+                    <option>PATCH</option>
+                    <option>PUT</option>
+                    <option>DELETE</option>
+                  </select>
+                </div>
+                <div>
+                  <label>Path</label>
+                  <input id="apiPath" placeholder="/api/account/me" />
+                </div>
+              </div>
+              <div class="row one">
+                <div>
+                  <label>JSON Body (optional)</label>
+                  <textarea id="apiBody" placeholder='{"example":true}'></textarea>
+                </div>
+              </div>
+              <div class="btns">
+                <button id="btnSend" class="primary">Send</button>
+                <button id="btnCopyCurl">Copy curl</button>
+              </div>
+              <div class="hint">Great for confirming access control: try doctor endpoints with patient token, etc.</div>
+            </div>
+          </div>
         </div>
+      </div>
 
-        <hr style="border:none; border-top:1px solid rgba(34,48,85,0.7); margin: 14px 0;" />
-
-        <h2 style="margin:0 0 10px; font-size:16px;">3) Set initial password</h2>
-        <p class="small">This calls <code>POST /api/auth/set-initial-password</code>. It should move you from <code>PENDING_PASSWORD</code> to <code>PENDING_OTP</code>.</p>
-
-        <div style="margin-top:10px;">
-          <input id="password" type="password" placeholder="Enter a new password" />
+      <div class="card" style="grid-column: 1 / -1;">
+        <div class="hd"><h2>Output</h2><div class="btns"><button id="btnClearLog">Clear Output</button></div></div>
+        <div class="bd">
+          <div id="log" class="log"></div>
         </div>
-        <div class="row" style="margin-top:10px;">
-          <button id="btnSetPassword">Set password</button>
-        </div>
-
-        <div style="margin-top:12px;">
-          <label class="small">Last response</label>
-          <pre id="lastResponse" class="card" style="padding:10px; border-radius: 10px; border-color: rgba(34,48,85,0.55); background: rgba(7,11,20,0.45);"></pre>
-        </div>
-
-        <p class="small warn" style="margin-top:12px;">Note: ACTIVE step needs OTP flow (not implemented yet). You can optionally add a dev-only “activate” endpoint.</p>
       </div>
     </div>
   </div>
 
 <script>
-  const LS_KEY = 'omnicare.jwt';
+  const LS = {
+    patient: 'omnicare.jwt.patient',
+    doctor: 'omnicare.jwt.doctor',
+    admin: 'omnicare.jwt.admin',
+    active: 'omnicare.jwt.active',
+    activeMode: 'omnicare.jwt.active.mode'
+  };
+
+  const els = {
+    baseUrl: document.getElementById('baseUrl'),
+    activeMode: document.getElementById('activeMode'),
+
+    mode: document.getElementById('mode'),
+    token: document.getElementById('token'),
+    email: document.getElementById('email'),
+    password: document.getElementById('password'),
+    name: document.getElementById('name'),
+
+    dotPatient: document.getElementById('dotPatient'),
+    dotDoctor: document.getElementById('dotDoctor'),
+    dotAdmin: document.getElementById('dotAdmin'),
+
+    apiMethod: document.getElementById('apiMethod'),
+    apiPath: document.getElementById('apiPath'),
+    apiBody: document.getElementById('apiBody'),
+
+    specialty: document.getElementById('specialty'),
+
+    log: document.getElementById('log')
+  };
+
+  function now() {
+    return new Date().toISOString().replace('T',' ').replace('Z','');
+  }
+
+  function logLine(text, kind) {
+    const prefix = kind === 'ok' ? '[OK] ' : kind === 'err' ? '[ERR] ' : kind === 'warn' ? '[WARN] ' : '';
+    els.log.textContent += `${now()} ${prefix}${text}\n`;
+    els.log.scrollTop = els.log.scrollHeight;
+  }
+
+  function prettyJson(v) {
+    try { return JSON.stringify(v, null, 2); } catch { return String(v); }
+  }
 
   function setDot(el, state) {
-    el.classList.remove('ok','bad');
-    if (state === 'ok') el.classList.add('ok');
+    el.classList.remove('good');
+    el.classList.remove('bad');
+    if (state === 'good') el.classList.add('good');
     if (state === 'bad') el.classList.add('bad');
   }
 
-  function b64UrlDecodeToString(b64url) {
-    const b64 = b64url.replace(/-/g, '+').replace(/_/g, '/');
-    const padded = b64 + '='.repeat((4 - (b64.length % 4)) % 4);
-    const binary = atob(padded);
-    const bytes = Uint8Array.from(binary, c => c.charCodeAt(0));
-    return new TextDecoder().decode(bytes);
+  function base() {
+    return window.location.origin;
   }
 
-  function decodeJwtPayload(token) {
-    const parts = token.split('.');
-    if (parts.length < 2) return null;
-    return JSON.parse(b64UrlDecodeToString(parts[1]));
+  async function api(method, path, body, token) {
+    const headers = { 'Accept': 'application/json' };
+    if (token) headers['Authorization'] = 'Bearer ' + token;
+    let payload;
+    if (body !== undefined && body !== null && body !== '') {
+      headers['Content-Type'] = 'application/json';
+      payload = typeof body === 'string' ? body : JSON.stringify(body);
+    }
+
+    const res = await fetch(path, { method, headers, body: payload });
+    const text = await res.text();
+    let json = null;
+    try { json = text ? JSON.parse(text) : null; } catch { }
+
+    return { ok: res.ok, status: res.status, text, json, headers: res.headers };
   }
 
-  function getToken() {
-    return localStorage.getItem(LS_KEY) || '';
+  function setActive(mode, token) {
+    localStorage.setItem(LS.activeMode, mode);
+    localStorage.setItem(LS.active, token || '');
+    if (mode === 'patient') localStorage.setItem(LS.patient, token || '');
+    if (mode === 'doctor') localStorage.setItem(LS.doctor, token || '');
+    if (mode === 'admin') localStorage.setItem(LS.admin, token || '');
+    refresh();
   }
 
-  function setToken(token) {
-    if (token) localStorage.setItem(LS_KEY, token);
-    else localStorage.removeItem(LS_KEY);
-    renderToken();
+  function getStored(mode) {
+    const key = mode === 'patient' ? LS.patient : mode === 'doctor' ? LS.doctor : LS.admin;
+    return localStorage.getItem(key) || '';
   }
 
-  function renderToken() {
-    const token = getToken();
-    document.getElementById('jwt').value = token;
+  function refresh() {
+    els.baseUrl.textContent = base();
 
-    const dotAuth = document.getElementById('dotAuth');
-    const authText = document.getElementById('authText');
+    const activeMode = localStorage.getItem(LS.activeMode) || '';
+    const activeTok = localStorage.getItem(LS.active) || '';
 
-    if (!token) {
-      setDot(dotAuth, 'bad');
-      authText.textContent = 'No token';
-      document.getElementById('decoded').textContent = '';
+    els.activeMode.textContent = activeMode || '(none)';
+
+    setDot(els.dotPatient, getStored('patient') ? 'good' : 'bad');
+    setDot(els.dotDoctor, getStored('doctor') ? 'good' : 'bad');
+    setDot(els.dotAdmin, getStored('admin') ? 'good' : 'bad');
+
+    // keep UI in sync
+    if (activeMode) {
+      els.mode.value = activeMode;
+      els.token.value = activeTok;
+    }
+  }
+
+  function ensureEmailDefaults() {
+    if (!els.email.value) {
+      const stamp = Date.now();
+      const mode = els.mode.value;
+      els.email.value = `${mode}.${stamp}@dev.local`;
+    }
+    if (!els.name.value) {
+      const mode = els.mode.value;
+      els.name.value = mode === 'patient' ? 'Dev Patient' : mode === 'doctor' ? 'Dev Doctor' : 'Dev Admin';
+    }
+  }
+
+  function requireToken() {
+    const tok = els.token.value.trim();
+    if (!tok) {
+      logLine('No token set. Use Login → Get JWT or paste a JWT and click Use Token.', 'warn');
+    }
+    return tok;
+  }
+
+  function createEndpointForMode(mode) {
+    if (mode === 'patient') return '/auth/dev/create-patient';
+    if (mode === 'doctor') return '/auth/dev/create-doctor';
+    if (mode === 'admin') return '/auth/dev/create-admin';
+    return '/auth/dev/create-patient';
+  }
+
+  async function createAccount() {
+    ensureEmailDefaults();
+    const mode = els.mode.value;
+    const path = createEndpointForMode(mode);
+
+    const body = { email: els.email.value.trim(), name: els.name.value.trim(), password: els.password.value };
+    logLine(`Creating ${mode} via ${path} ...`);
+    const r = await api('POST', path, body);
+    if (r.ok) {
+      logLine(`${mode} created: ${prettyJson(r.json || r.text)}`, 'ok');
+    } else {
+      logLine(`Create failed (${r.status}): ${r.text}`, 'err');
+    }
+  }
+
+  async function login() {
+    ensureEmailDefaults();
+    const body = { email: els.email.value.trim().toLowerCase(), password: els.password.value };
+    logLine(`Logging in as ${body.email} ...`);
+    const r = await api('POST', '/api/auth/login', body);
+    if (!r.ok) {
+      logLine(`Login failed (${r.status}): ${r.text}`, 'err');
       return;
     }
 
-    setDot(dotAuth, 'ok');
-    authText.textContent = 'Token present';
-
-    try {
-      const payload = decodeJwtPayload(token);
-      document.getElementById('decoded').textContent = JSON.stringify(payload, null, 2);
-    } catch (e) {
-      document.getElementById('decoded').textContent = 'Failed to decode payload: ' + e;
-    }
-  }
-
-  async function apiFetch(path, options = {}) {
-    const token = getToken();
-    const headers = new Headers(options.headers || {});
-    if (token) headers.set('Authorization', 'Bearer ' + token);
-    return fetch(path, { ...options, headers });
-  }
-
-  function setLastResponse(text) {
-    document.getElementById('lastResponse').textContent = text;
-  }
-
-  function setApiStatus(ok, text) {
-    setDot(document.getElementById('dotApi'), ok ? 'ok' : 'bad');
-    document.getElementById('apiText').textContent = text;
-  }
-
-  function setMeView(me, jwtPayload) {
-    document.getElementById('meEmail').textContent = me?.email ?? '-';
-    document.getElementById('meName').textContent = me?.name ?? '-';
-    document.getElementById('meHasPassword').textContent = (me?.hasPassword === true) ? 'true' : (me?.hasPassword === false ? 'false' : '-');
-
-    const reg = jwtPayload?.registrationStatus ?? '-';
-    const roles = Array.isArray(jwtPayload?.roles) ? jwtPayload.roles.join(', ') : '-';
-
-    document.getElementById('meReg').textContent = reg;
-    document.getElementById('meRoles').textContent = roles;
-  }
-
-  async function refreshMe() {
-    const token = getToken();
-    if (!token) {
-      setApiStatus(false, 'No token');
-      setMeView(null, null);
+    const tok = (r.json && r.json.token) ? r.json.token : '';
+    if (!tok) {
+      logLine(`Login ok but token missing: ${r.text}`, 'err');
       return;
     }
 
-    let jwtPayload = null;
-    try { jwtPayload = decodeJwtPayload(token); } catch {}
+    els.token.value = tok;
+    setActive(els.mode.value, tok);
+    logLine('Token saved as active.', 'ok');
+  }
 
-    try {
-      const res = await apiFetch('/api/account/me');
-      const text = await res.text();
+  async function whoAmI() {
+    const tok = requireToken();
+    const r = await api('GET', '/api/account/me', null, tok);
+    if (r.ok) {
+      logLine(prettyJson(r.json || r.text), 'ok');
+    } else {
+      logLine(`(${r.status}) ${r.text}`, 'err');
+    }
+  }
 
-      if (!res.ok) {
-        setApiStatus(false, 'HTTP ' + res.status);
-        setLastResponse(text);
-        setMeView(null, jwtPayload);
+  async function seedProfessional() {
+    const tok = requireToken();
+    const email = els.email.value.trim().toLowerCase();
+    if (!email) {
+      logLine('Set Email first (doctor email recommended).', 'warn');
+      return;
+    }
+
+    const body = {
+      doctorEmail: email,
+      specialty: 'Cardiology',
+      yearsExperience: 7,
+      totalReviews: 128,
+      serviceRadiusKm: 10,
+      consultationsCount: 6,
+      documentsCount: 2
+    };
+
+    logLine('Seeding professional demo data ...');
+    const r = await api('POST', '/auth/dev/seed-professional', body, tok);
+    if (r.ok) logLine(prettyJson(r.json || r.text), 'ok');
+    else logLine(`(${r.status}) ${r.text}`, 'err');
+  }
+
+  async function doctorProfile() {
+    const tok = requireToken();
+    const r = await api('GET', '/api/doctor/profile', null, tok);
+    if (r.ok) logLine(prettyJson(r.json || r.text), 'ok');
+    else logLine(`(${r.status}) ${r.text}`, 'err');
+  }
+
+  async function goLive() {
+    const tok = requireToken();
+    const r = await api('PATCH', '/api/doctor/status', { goLive: true }, tok);
+    if (r.ok) logLine(prettyJson(r.json || r.text), 'ok');
+    else logLine(`(${r.status}) ${r.text}`, 'err');
+  }
+
+  async function doctorHistory() {
+    const tok = requireToken();
+    const r = await api('GET', '/api/doctor/history', null, tok);
+    if (r.ok) logLine(prettyJson(r.json || r.text), 'ok');
+    else logLine(`(${r.status}) ${r.text}`, 'err');
+  }
+
+  async function doctorRevenue() {
+    const tok = requireToken();
+    const r = await api('GET', '/api/doctor/revenue?limit=10', null, tok);
+    if (r.ok) logLine(prettyJson(r.json || r.text), 'ok');
+    else logLine(`(${r.status}) ${r.text}`, 'err');
+  }
+
+  async function patients() {
+    const tok = requireToken();
+    const r = await api('GET', '/api/patients', null, tok);
+    if (r.ok) logLine(prettyJson(r.json || r.text), 'ok');
+    else logLine(`(${r.status}) ${r.text}`, 'err');
+  }
+
+  async function familyCreate() {
+    const tok = requireToken();
+    const body = { fullName: 'Dev Family Member', relationship: 'SPOUSE', birthDate: '1990-01-01', gender: 'F', medicalInfo: {} };
+    const r = await api('POST', '/api/family', body, tok);
+    if (r.ok) logLine(prettyJson(r.json || r.text), 'ok');
+    else logLine(`(${r.status}) ${r.text}`, 'err');
+  }
+
+  async function familyList() {
+    const tok = requireToken();
+    const r = await api('GET', '/api/family', null, tok);
+    if (r.ok) logLine(prettyJson(r.json || r.text), 'ok');
+    else logLine(`(${r.status}) ${r.text}`, 'err');
+  }
+
+  async function doctorSearch() {
+    const tok = requireToken();
+    const sp = els.specialty.value.trim();
+    const path = sp ? `/api/doctors?specialty=${encodeURIComponent(sp)}` : '/api/doctors';
+    const r = await api('GET', path, null, tok);
+    if (r.ok) logLine(prettyJson(r.json || r.text), 'ok');
+    else logLine(`(${r.status}) ${r.text}`, 'err');
+  }
+
+  async function sendRaw() {
+    const tok = requireToken();
+    const method = els.apiMethod.value;
+    const path = els.apiPath.value.trim();
+    if (!path.startsWith('/')) {
+      logLine('Path must start with /. Example: /api/account/me', 'warn');
+      return;
+    }
+
+    let body = els.apiBody.value;
+    if (body && body.trim()) {
+      try { body = JSON.parse(body); } catch {
+        logLine('Body is not valid JSON.', 'warn');
         return;
       }
+    } else {
+      body = null;
+    }
 
-      const me = text ? JSON.parse(text) : {};
-      setApiStatus(true, 'OK');
-      setLastResponse(text);
-      setMeView(me, jwtPayload);
-    } catch (e) {
-      setApiStatus(false, 'Error');
-      setLastResponse(String(e));
-      setMeView(null, jwtPayload);
+    logLine(`${method} ${path}`);
+    const r = await api(method, path, body, tok);
+    if (r.ok) {
+      logLine(prettyJson(r.json || r.text), 'ok');
+    } else {
+      logLine(`(${r.status}) ${r.text}`, 'err');
     }
   }
 
-  async function setInitialPassword() {
-    const pwd = document.getElementById('password').value;
-    if (!pwd) {
-      setLastResponse('Please enter a password');
-      return;
-    }
+  async function copyCurl() {
+    const tok = els.token.value.trim();
+    const method = els.apiMethod.value;
+    const path = els.apiPath.value.trim();
+    let body = els.apiBody.value.trim();
 
-    try {
-      const res = await apiFetch('/api/auth/set-initial-password', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password: pwd })
-      });
-
-      const text = await res.text();
-      setLastResponse('HTTP ' + res.status + '\n' + (text || '(empty body)'));
-      await refreshMe();
-    } catch (e) {
-      setLastResponse(String(e));
+    const parts = [`curl -i -X ${method}`];
+    parts.push(`-H "Authorization: Bearer ${tok}"`);
+    parts.push(`-H "Content-Type: application/json"`);
+    if (body) {
+      parts.push(`--data '${body.replace(/'/g, "'\\''")}'`);
     }
+    parts.push(`${base()}${path}`);
+
+    await navigator.clipboard.writeText(parts.join(' '));
+    logLine('curl copied to clipboard.', 'ok');
   }
 
-  function login() {
-    window.location.href = '/oauth2/authorization/google';
-  }
+  // Wire UI
+  document.getElementById('btnUse').addEventListener('click', () => {
+    const tok = els.token.value.trim();
+    setActive(els.mode.value, tok);
+    logLine('Active token updated.', 'ok');
+  });
 
-  function bootFromQuerystring() {
-    const params = new URLSearchParams(window.location.search);
-    const token = params.get('token');
-    if (token) {
-      setToken(token);
-      params.delete('token');
-      const newUrl = window.location.pathname + (params.toString() ? ('?' + params.toString()) : '');
-      window.history.replaceState({}, '', newUrl);
-    }
-  }
+  document.getElementById('btnClear').addEventListener('click', () => {
+    const mode = els.mode.value;
+    setActive(mode, '');
+    els.token.value = '';
+    logLine('Token cleared for current mode.', 'ok');
+  });
 
+  document.getElementById('btnCreate').addEventListener('click', createAccount);
   document.getElementById('btnLogin').addEventListener('click', login);
-  document.getElementById('btnClear').addEventListener('click', () => setToken(''));
-  document.getElementById('btnMe').addEventListener('click', refreshMe);
-  document.getElementById('btnSetPassword').addEventListener('click', setInitialPassword);
-  document.getElementById('jwt').addEventListener('change', (e) => setToken(e.target.value.trim()));
+  document.getElementById('btnWhoAmI').addEventListener('click', whoAmI);
 
-  bootFromQuerystring();
-  renderToken();
-  refreshMe();
+  document.getElementById('btnSeedProfessional').addEventListener('click', seedProfessional);
+  document.getElementById('btnDoctorProfile').addEventListener('click', doctorProfile);
+  document.getElementById('btnGoLive').addEventListener('click', goLive);
+  document.getElementById('btnDoctorHistory').addEventListener('click', doctorHistory);
+  document.getElementById('btnDoctorRevenue').addEventListener('click', doctorRevenue);
+
+  document.getElementById('btnPatients').addEventListener('click', patients);
+  document.getElementById('btnFamilyCreate').addEventListener('click', familyCreate);
+  document.getElementById('btnFamilyList').addEventListener('click', familyList);
+
+  document.getElementById('btnDoctorSearch').addEventListener('click', doctorSearch);
+
+  document.getElementById('btnSend').addEventListener('click', sendRaw);
+  document.getElementById('btnCopyCurl').addEventListener('click', copyCurl);
+
+  document.getElementById('btnClearLog').addEventListener('click', () => { els.log.textContent = ''; });
+
+  els.mode.addEventListener('change', () => {
+    const mode = els.mode.value;
+    els.token.value = getStored(mode);
+    // Suggest defaults for new mode
+    els.email.value = '';
+    els.name.value = '';
+    ensureEmailDefaults();
+  });
+
+  // Init
+  (function init() {
+    ensureEmailDefaults();
+    els.apiPath.value = '/api/account/me';
+    els.apiBody.value = '';
+
+    // Load active mode/token if present
+    const activeMode = localStorage.getItem(LS.activeMode) || 'patient';
+    els.mode.value = activeMode;
+    els.token.value = localStorage.getItem(LS.active) || getStored(activeMode) || '';
+
+    // Support token in query string
+    const params = new URLSearchParams(window.location.search);
+    const qToken = params.get('token');
+    const qMode = params.get('mode');
+    if (qMode && ['patient','doctor','admin'].includes(qMode)) {
+      els.mode.value = qMode;
+    }
+    if (qToken) {
+      els.token.value = qToken;
+      setActive(els.mode.value, qToken);
+      logLine('Token loaded from query string.', 'ok');
+    } else {
+      refresh();
+    }
+
+    logLine('Ready. Create account → Login → Use quick actions / raw console.', 'ok');
+  })();
 </script>
 </body>
 </html>

@@ -7,6 +7,19 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+function ConvertFrom-JsonSafe([string]$Raw) {
+  if ($null -eq $Raw -or $Raw.Trim().Length -eq 0) { return $null }
+  try {
+    return ($Raw | ConvertFrom-Json -ErrorAction Stop)
+  } catch {
+    return $null
+  }
+}
+
+if ($BaseUrl -notmatch '^https?://') {
+  throw "Invalid BaseUrl '$BaseUrl'. Usage: .\\smoke-test.ps1 [-BaseUrl http://localhost:8080] [-Email you@dev.local] [-Password (ConvertTo-SecureString ...)]"
+}
+
 function New-TestEmail {
   $stamp = Get-Date -Format "yyyyMMddHHmmss"
   return "smoke+$stamp@dev.local"
@@ -54,7 +67,7 @@ function Invoke-Api {
 
   try {
     $resp = Invoke-WebRequest -Method $Method -Uri $uri -Headers $allHeaders -Body $payload -UseBasicParsing
-    return [pscustomobject]@{ Ok=$true; Status=$resp.StatusCode; Raw=$resp.Content; Json=($resp.Content | ConvertFrom-Json -ErrorAction SilentlyContinue) }
+    return [pscustomobject]@{ Ok=$true; Status=$resp.StatusCode; Raw=$resp.Content; Json=(ConvertFrom-JsonSafe $resp.Content) }
   } catch {
     $ex = $_.Exception
     $status = $null
@@ -70,7 +83,7 @@ function Invoke-Api {
       $raw = ($_.ToString())
     }
 
-    return [pscustomobject]@{ Ok=$false; Status=$status; Raw=$raw; Json=($raw | ConvertFrom-Json -ErrorAction SilentlyContinue) }
+    return [pscustomobject]@{ Ok=$false; Status=$status; Raw=$raw; Json=(ConvertFrom-JsonSafe $raw) }
   }
 }
 
@@ -94,6 +107,41 @@ Write-Host "Email:   $Email"
 $PasswordPlain = ConvertFrom-SecureStringPlain $Password
 
 do {
+
+# 0) Create dev doctor + login as doctor (to populate doctors table + test doctor endpoints)
+$doctorEmail = ("doctor." + ($Email -replace "[@+].*","") + "@dev.local").ToLowerInvariant()
+$createDoc = Invoke-Api -Method POST -Path "/auth/dev/create-doctor" -Body @{ email=$doctorEmail; name="Smoke Doctor"; password=$PasswordPlain }
+$createDocOk = $createDoc.Ok -or ($createDoc.Status -eq 409)
+Add-Result "dev.create-doctor" $createDocOk $createDoc.Status ($createDoc.Raw -replace "\s+"," ")
+if (-not $createDocOk) { break }
+
+$loginDoc = Invoke-Api -Method POST -Path "/api/auth/login" -Body @{ email=$doctorEmail; password=$PasswordPlain }
+$doctorToken = $null
+if ($loginDoc.Ok -and $loginDoc.Json -and $loginDoc.Json.token) { $doctorToken = $loginDoc.Json.token }
+Add-Result "auth.login.doctor" ($loginDoc.Ok -and $doctorToken) $loginDoc.Status ($loginDoc.Raw -replace "\s+"," ")
+if (-not $doctorToken) { break }
+
+# Seed professional portal demo data (consultations + doctor docs)
+$seed = Invoke-Api -Method POST -Path "/auth/dev/seed-professional" -Body @{ doctorEmail=$doctorEmail; specialty="Cardiology"; yearsExperience=7; totalReviews=128; serviceRadiusKm=10; consultationsCount=6; documentsCount=2 }
+Add-Result "dev.seed-professional" $seed.Ok $seed.Status ($seed.Raw -replace "\s+"," ")
+
+# Basic doctor endpoints (these exercise doctors/consultations/doctor_documents tables)
+$docProfile = Invoke-Api -Method GET -Path "/api/doctor/profile" -Token $doctorToken
+$hasDocs = $docProfile.Ok -and $docProfile.Json -and $docProfile.Json.verificationDocuments
+Add-Result "doctor.profile.get" $docProfile.Ok $docProfile.Status ($docProfile.Raw -replace "\s+"," ")
+
+$goLive = Invoke-Api -Method PATCH -Path "/api/doctor/status" -Token $doctorToken -Body @{ goLive = $true }
+Add-Result "doctor.status.goLive" $goLive.Ok $goLive.Status ($goLive.Raw -replace "\s+"," ")
+
+$history = Invoke-Api -Method GET -Path "/api/doctor/history" -Token $doctorToken
+$historyOk = $history.Ok -and $history.Json -and @($history.Json).Count -ge 1
+Add-Result "doctor.history" $historyOk $history.Status ($history.Raw -replace "\s+"," ")
+if (-not $historyOk) { break }
+
+$revenue = Invoke-Api -Method GET -Path "/api/doctor/revenue?limit=5" -Token $doctorToken
+$revenueOk = $revenue.Ok -and $revenue.Json -and $null -ne $revenue.Json.totalGrossEarnings -and $null -ne $revenue.Json.totalNetPart -and $null -ne $revenue.Json.omnicareCommission
+Add-Result "doctor.revenue" $revenueOk $revenue.Status ($revenue.Raw -replace "\s+"," ")
+if (-not $revenueOk) { break }
 
 # 1) Create dev patient (idempotent-ish: accept 200 or 409)
 $create = Invoke-Api -Method POST -Path "/auth/dev/create-patient" -Body @{ email=$Email; name="Smoke Test"; password=$PasswordPlain }
