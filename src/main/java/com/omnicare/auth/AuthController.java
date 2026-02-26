@@ -72,6 +72,12 @@ public class AuthController {
     public record RegisterRequest(String email, String name, String password) {
     }
 
+    public record VerifyEmailOtpRequest(String email, String code) {
+    }
+
+    public record SetPhoneRequest(String email, String phoneNumber) {
+    }
+
     @PostMapping("/login")
     public LoginResponse login(@RequestBody LoginRequest request) {
         if (request == null || request.email() == null || request.email().isBlank() || request.password() == null || request.password().isBlank()) {
@@ -116,8 +122,9 @@ public class AuthController {
         User user = new User(email, resolvedName);
         user.setPasswordHash(passwordEncoder.encode(request.password()));
         user.setRole(UserRole.PATIENT);
-        user.setRegistrationStatus(RegistrationStatus.ACTIVE);
+        user.setRegistrationStatus(RegistrationStatus.PENDING_OTP);
         user.setEmailVerified(false);
+        user.setPhoneVerified(false);
         user = userRepository.save(user);
 
         patientService.ensureForUser(user);
@@ -128,24 +135,52 @@ public class AuthController {
         return new RegisterResponse("Verification email sent");
     }
 
+    @PostMapping("/verify-email-otp")
+    public RegisterResponse verifyEmailOtp(@RequestBody VerifyEmailOtpRequest request) {
+        if (request == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "email and code are required");
+        }
+        emailVerificationService.verifyEmailCodeOrThrow(request.email(), request.code());
+        return new RegisterResponse("Email verified");
+    }
+
+    @PostMapping("/set-phone")
+    @Transactional
+    public RegisterResponse setPhone(@RequestBody SetPhoneRequest request) {
+        if (request == null || request.email() == null || request.email().isBlank() || request.phoneNumber() == null || request.phoneNumber().isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "email and phoneNumber are required");
+        }
+
+        String email = request.email().trim().toLowerCase();
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
+
+        if (!user.isEmailVerified()) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Email not verified");
+        }
+
+        user.setPhoneNumber(normalizePhone(request.phoneNumber()));
+        user.setPhoneVerified(false);
+        userRepository.save(user);
+        return new RegisterResponse("Phone set");
+    }
+
+    private static String normalizePhone(String value) {
+        if (value == null) {
+            return null;
+        }
+        String phone = value.trim();
+        phone = phone.replace(" ", "");
+        phone = phone.replace("-", "");
+        return phone;
+    }
+
     @GetMapping("/verify-email")
     public Object verifyEmail(
             @RequestParam("token") String token,
             @RequestParam(value = "redirect", required = false) String redirect
     ) {
-        if ("1".equals(redirect)) {
-            User user = emailVerificationService.verifyTokenAndReturnUserOrThrow(token);
-            patientService.ensureForUser(user);
-            String jwt = jwtService.createToken(user);
-
-            String location = "/dev/password.html?token=" + java.net.URLEncoder.encode(jwt, java.nio.charset.StandardCharsets.UTF_8);
-            HttpHeaders headers = new HttpHeaders();
-            headers.add(HttpHeaders.LOCATION, location);
-            return new ResponseEntity<>(headers, HttpStatus.FOUND);
-        }
-
-        emailVerificationService.verifyTokenOrThrow(token);
-        return new RegisterResponse("Email verified");
+        throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Use /api/auth/verify-email-otp");
     }
 
     @PostMapping("/logout")

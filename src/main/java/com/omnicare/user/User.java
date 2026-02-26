@@ -43,6 +43,12 @@ public class User {
     @Column(name = "email_verified", nullable = false)
     private boolean emailVerified;
 
+    @Column(name = "phone_number")
+    private String phoneNumber;
+
+    @Column(name = "phone_verified")
+    private Boolean phoneVerified;
+
     @Column(name = "email_verification_token_hash")
     private String emailVerificationTokenHash;
 
@@ -115,6 +121,22 @@ public class User {
 
     public void setEmailVerified(boolean emailVerified) {
         this.emailVerified = emailVerified;
+    }
+
+    public String getPhoneNumber() {
+        return phoneNumber;
+    }
+
+    public void setPhoneNumber(String phoneNumber) {
+        this.phoneNumber = phoneNumber;
+    }
+
+    public boolean isPhoneVerified() {
+        return Boolean.TRUE.equals(phoneVerified);
+    }
+
+    public void setPhoneVerified(boolean phoneVerified) {
+        this.phoneVerified = phoneVerified;
     }
 
     public String getEmailVerificationTokenHash() {

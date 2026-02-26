@@ -1,6 +1,5 @@
 package com.omnicare.document;
 
-import com.omnicare.family.FamilyMember;
 import com.omnicare.user.User;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -28,14 +27,6 @@ public class MedicalDocument {
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "owner_user_id", nullable = false)
     private User ownerUser;
-
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "user_id")
-    private User user;
-
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "family_member_id")
-    private FamilyMember familyMember;
 
     @Column(name = "title", nullable = false)
     private String title;
@@ -72,22 +63,6 @@ public class MedicalDocument {
 
     public void setOwnerUser(User ownerUser) {
         this.ownerUser = ownerUser;
-    }
-
-    public User getUser() {
-        return user;
-    }
-
-    public void setUser(User user) {
-        this.user = user;
-    }
-
-    public FamilyMember getFamilyMember() {
-        return familyMember;
-    }
-
-    public void setFamilyMember(FamilyMember familyMember) {
-        this.familyMember = familyMember;
     }
 
     public String getTitle() {

@@ -21,6 +21,7 @@ import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandl
 import org.springframework.web.server.ResponseStatusException;
 
 import java.util.Comparator;
+import java.time.Instant;
 import java.util.stream.Collectors;
 
 @RestController
@@ -31,12 +32,14 @@ public class DevAuthController {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final DoctorRepository doctorRepository;
+    private final PhoneOtpVerificationService phoneOtpVerificationService;
 
-    public DevAuthController(RequestMappingHandlerMapping handlerMapping, UserRepository userRepository, PasswordEncoder passwordEncoder, DoctorRepository doctorRepository) {
+    public DevAuthController(RequestMappingHandlerMapping handlerMapping, UserRepository userRepository, PasswordEncoder passwordEncoder, DoctorRepository doctorRepository, PhoneOtpVerificationService phoneOtpVerificationService) {
         this.handlerMapping = handlerMapping;
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.doctorRepository = doctorRepository;
+        this.phoneOtpVerificationService = phoneOtpVerificationService;
     }
 
     public record CreateDoctorRequest(String email, String name, String password) {
@@ -55,6 +58,18 @@ public class DevAuthController {
     }
 
     public record CreateAdminResponse(String message) {
+    }
+
+    public record RequestPhoneOtpRequest(String phoneNumber) {
+    }
+
+    public record RequestPhoneOtpResponse(String phoneNumber, String otp, Instant expiresAt) {
+    }
+
+    public record VerifyPhoneOtpRequest(String phoneNumber, String otp) {
+    }
+
+    public record VerifyPhoneOtpResponse(String message) {
     }
 
     @PostMapping(value = "/create-doctor")
@@ -131,6 +146,28 @@ public class DevAuthController {
         userRepository.save(user);
 
         return new CreateAdminResponse("Admin created and verified");
+    }
+
+    @PostMapping(value = "/request-phone-otp")
+    @Transactional
+    public RequestPhoneOtpResponse requestPhoneOtp(@RequestBody RequestPhoneOtpRequest request) {
+        if (request == null || request.phoneNumber() == null || request.phoneNumber().isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "phoneNumber is required");
+        }
+
+        PhoneOtpVerificationService.IssuedOtp issued = phoneOtpVerificationService.issueOtp(request.phoneNumber());
+        return new RequestPhoneOtpResponse(issued.phoneNumber(), issued.otp(), issued.expiresAt());
+    }
+
+    @PostMapping(value = "/verify-phone-otp")
+    @Transactional
+    public VerifyPhoneOtpResponse verifyPhoneOtp(@RequestBody VerifyPhoneOtpRequest request) {
+        if (request == null || request.phoneNumber() == null || request.phoneNumber().isBlank() || request.otp() == null || request.otp().isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "phoneNumber and otp are required");
+        }
+
+        phoneOtpVerificationService.verifyOtpOrThrow(request.phoneNumber(), request.otp());
+        return new VerifyPhoneOtpResponse("OTP verified");
     }
 
     @GetMapping(value = "/callback", produces = MediaType.TEXT_HTML_VALUE)

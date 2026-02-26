@@ -81,11 +81,9 @@ public class AccountController {
         }
     }
 
-    public record MedicalDocumentResponse(UUID id, UUID userId, UUID familyMemberId, String title, MedicalDocumentType type, LocalDate issueDate, String fileUrl) {
+    public record MedicalDocumentResponse(UUID id, String title, MedicalDocumentType type, LocalDate issueDate, String fileUrl) {
         public static MedicalDocumentResponse from(MedicalDocument doc) {
-            UUID userId = doc.getUser() == null ? null : doc.getUser().getId();
-            UUID familyId = doc.getFamilyMember() == null ? null : doc.getFamilyMember().getId();
-            return new MedicalDocumentResponse(doc.getId(), userId, familyId, doc.getTitle(), doc.getType(), doc.getIssueDate(), doc.getFileUrl());
+            return new MedicalDocumentResponse(doc.getId(), doc.getTitle(), doc.getType(), doc.getIssueDate(), doc.getFileUrl());
         }
     }
 

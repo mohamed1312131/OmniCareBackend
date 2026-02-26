@@ -52,6 +52,10 @@ public class SecurityConfig {
                         .requestMatchers("/api/auth/login").permitAll()
                         .requestMatchers("/api/auth/register").permitAll()
                         .requestMatchers("/api/auth/verify-email").permitAll()
+                        .requestMatchers("/api/auth/verify-email-otp").permitAll()
+                        .requestMatchers("/api/auth/set-phone").permitAll()
+                        .requestMatchers("/api/auth/request-phone-otp").permitAll()
+                        .requestMatchers("/api/auth/verify-phone-otp").permitAll()
                         .requestMatchers("/api/**").authenticated()
                         .anyRequest().authenticated()
                 )
@@ -88,6 +92,7 @@ public class SecurityConfig {
     public CorsConfigurationSource corsConfigurationSource(AppProperties appProperties) {
         CorsConfiguration configuration = new CorsConfiguration();
         configuration.setAllowedOrigins(List.of(appProperties.cors().allowedOrigin()));
+        configuration.setAllowedOriginPatterns(List.of("http://localhost:*", "http://127.0.0.1:*"));
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(List.of("Authorization", "Content-Type"));
         configuration.setExposedHeaders(List.of("Authorization"));

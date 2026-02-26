@@ -1,12 +1,18 @@
 package com.omnicare.auth;
 
 import com.omnicare.doctor.*;
+import com.omnicare.medication.Medication;
+import com.omnicare.medication.MedicationRepository;
 import com.omnicare.patient.Patient;
 import com.omnicare.patient.PatientService;
+import com.omnicare.prescription.Prescription;
+import com.omnicare.prescription.PrescriptionItem;
+import com.omnicare.prescription.PrescriptionRepository;
 import com.omnicare.user.RegistrationStatus;
 import com.omnicare.user.User;
 import com.omnicare.user.UserRepository;
 import com.omnicare.user.UserRole;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.transaction.annotation.Transactional;
@@ -33,14 +39,27 @@ public class DevProfessionalSeedController {
     private final ConsultationRepository consultationRepository;
     private final DoctorDocumentRepository doctorDocumentRepository;
     private final PatientService patientService;
+    private final PrescriptionRepository prescriptionRepository;
+    private final MedicationRepository medicationRepository;
 
-    public DevProfessionalSeedController(UserRepository userRepository, PasswordEncoder passwordEncoder, DoctorRepository doctorRepository, ConsultationRepository consultationRepository, DoctorDocumentRepository doctorDocumentRepository, PatientService patientService) {
+    public DevProfessionalSeedController(
+            UserRepository userRepository,
+            PasswordEncoder passwordEncoder,
+            DoctorRepository doctorRepository,
+            ConsultationRepository consultationRepository,
+            DoctorDocumentRepository doctorDocumentRepository,
+            PatientService patientService,
+            PrescriptionRepository prescriptionRepository,
+            MedicationRepository medicationRepository
+    ) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.doctorRepository = doctorRepository;
         this.consultationRepository = consultationRepository;
         this.doctorDocumentRepository = doctorDocumentRepository;
         this.patientService = patientService;
+        this.prescriptionRepository = prescriptionRepository;
+        this.medicationRepository = medicationRepository;
     }
 
     public record SeedProfessionalRequest(
@@ -95,7 +114,6 @@ public class DevProfessionalSeedController {
             doctor.setSpecialty(request.specialty().trim());
         }
         if (request.yearsExperience() != null) {
-            doctor.setYearsExperience(request.yearsExperience());
             doctor.setExperienceYears(request.yearsExperience());
         }
         if (request.totalReviews() != null) {
@@ -127,7 +145,6 @@ public class DevProfessionalSeedController {
         for (int i = 0; i < consultationsCount; i++) {
             Consultation c = new Consultation(doctor);
             c.setPatient(patient);
-            c.setPatientUser(patientUser);
             c.setSymptoms(i % 2 == 0 ? "Headache, fever" : "Sore throat, fatigue");
             c.setDiagnosis(i % 2 == 0 ? "Viral infection" : "Common cold");
             c.setTreatment(i % 2 == 0 ? "Rest + hydration" : "Vitamin C + rest");
@@ -139,8 +156,38 @@ public class DevProfessionalSeedController {
             BigDecimal fee = new BigDecimal(String.valueOf(1500 + r.nextInt(4000))).movePointLeft(2);
             c.setFee(fee);
 
-            c.setTimestamp(Instant.now().minus(i, ChronoUnit.DAYS));
-            createdConsultations.add(consultationRepository.save(c));
+            Instant when = Instant.now().minus(i, ChronoUnit.DAYS);
+            c.setTimestamp(when);
+            Consultation saved = consultationRepository.save(c);
+            createdConsultations.add(saved);
+
+            // Create a realistic prescription for most completed consultations.
+            // Note: prescriptions are linked to patient_id and prescriber_user_id (not consultation_id).
+            boolean shouldCreatePrescription = r.nextInt(100) < 75;
+            if (shouldCreatePrescription) {
+                Prescription p = new Prescription(patient, doctorUser, when);
+                p.setNotes("Seeded prescription for consultation " + saved.getId());
+
+                int itemsCount = 1 + r.nextInt(3);
+                for (int j = 0; j < itemsCount; j++) {
+                    Medication med = pickRandomMedication(r);
+                    if (med == null) {
+                        continue;
+                    }
+
+                    int frequencyTimes = 1 + r.nextInt(3);
+                    int frequencyPeriodDays = 1;
+                    int durationDays = 3 + r.nextInt(8);
+
+                    PrescriptionItem item = new PrescriptionItem(med, frequencyTimes, frequencyPeriodDays, durationDays);
+                    if (r.nextBoolean()) {
+                        item.setDoseUnit("mg");
+                    }
+                    p.addItem(item);
+                }
+
+                prescriptionRepository.save(p);
+            }
         }
 
         for (int i = 0; i < documentsCount; i++) {
@@ -152,5 +199,14 @@ public class DevProfessionalSeedController {
         }
 
         return new SeedProfessionalResponse(doctorEmail, patientEmail, createdConsultations.size(), documentsCount);
+    }
+
+    private Medication pickRandomMedication(Random r) {
+        long total = medicationRepository.count();
+        if (total <= 0) {
+            return null;
+        }
+        int idx = (int) Math.min(Integer.MAX_VALUE, r.nextLong(total));
+        return medicationRepository.findAll(PageRequest.of(idx, 1)).stream().findFirst().orElse(null);
     }
 }

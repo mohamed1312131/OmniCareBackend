@@ -74,7 +74,7 @@ public class DoctorController {
                     d.getUser().getId(),
                     d.getUser().getName(),
                     d.getSpecialty(),
-                    (d.getYearsExperience() != null ? d.getYearsExperience() : d.getExperienceYears()),
+                    d.getExperienceYears(),
                     d.getTotalReviews(),
                     d.getRating(),
                     d.getServiceRadiusKm(),
@@ -113,12 +113,6 @@ public class DoctorController {
                     familyId = c.getPatient().getFamilyMember().getId();
                 }
             }
-            if (patientUserId == null) {
-                patientUserId = c.getPatientUser() == null ? null : c.getPatientUser().getId();
-            }
-            if (familyId == null) {
-                familyId = c.getPatientFamilyMember() == null ? null : c.getPatientFamilyMember().getId();
-            }
 
             String patientName = null;
             if (c.getPatient() != null) {
@@ -126,13 +120,6 @@ public class DoctorController {
                     patientName = c.getPatient().getUser().getName();
                 } else if (c.getPatient().getFamilyMember() != null && c.getPatient().getFamilyMember().getFullName() != null) {
                     patientName = c.getPatient().getFamilyMember().getFullName();
-                }
-            }
-            if (patientName == null) {
-                if (c.getPatientUser() != null && c.getPatientUser().getName() != null) {
-                    patientName = c.getPatientUser().getName();
-                } else if (c.getPatientFamilyMember() != null && c.getPatientFamilyMember().getFullName() != null) {
-                    patientName = c.getPatientFamilyMember().getFullName();
                 }
             }
 
@@ -175,13 +162,6 @@ public class DoctorController {
                     patientName = c.getPatient().getUser().getName();
                 } else if (c.getPatient().getFamilyMember() != null && c.getPatient().getFamilyMember().getFullName() != null) {
                     patientName = c.getPatient().getFamilyMember().getFullName();
-                }
-            }
-            if (patientName == null) {
-                if (c.getPatientUser() != null && c.getPatientUser().getName() != null) {
-                    patientName = c.getPatientUser().getName();
-                } else if (c.getPatientFamilyMember() != null && c.getPatientFamilyMember().getFullName() != null) {
-                    patientName = c.getPatientFamilyMember().getFullName();
                 }
             }
 
@@ -244,7 +224,6 @@ public class DoctorController {
                 doctor.setServiceRadiusKm(request.serviceRadiusKm());
             }
             if (request.yearsExperience() != null) {
-                doctor.setYearsExperience(request.yearsExperience());
                 doctor.setExperienceYears(request.yearsExperience());
             }
         }

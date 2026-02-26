@@ -31,9 +31,6 @@ public class Doctor {
     @Column(name = "experience_years")
     private Integer experienceYears;
 
-    @Column(name = "years_experience")
-    private Integer yearsExperience;
-
     @Column(name = "total_reviews")
     private Integer totalReviews;
 
@@ -79,14 +76,6 @@ public class Doctor {
 
     public void setExperienceYears(Integer experienceYears) {
         this.experienceYears = experienceYears;
-    }
-
-    public Integer getYearsExperience() {
-        return yearsExperience;
-    }
-
-    public void setYearsExperience(Integer yearsExperience) {
-        this.yearsExperience = yearsExperience;
     }
 
     public Integer getTotalReviews() {

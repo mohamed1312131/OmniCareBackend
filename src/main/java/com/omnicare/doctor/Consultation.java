@@ -1,9 +1,9 @@
 package com.omnicare.doctor;
 
-import com.omnicare.family.FamilyMember;
 import com.omnicare.patient.Patient;
-import com.omnicare.user.User;
 import jakarta.persistence.Column;
+import jakarta.persistence.CollectionTable;
+import jakarta.persistence.ElementCollection;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
@@ -17,6 +17,8 @@ import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
 @Entity
@@ -36,14 +38,6 @@ public class Consultation {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "patient_id")
     private Patient patient;
-
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "patient_user_id")
-    private User patientUser;
-
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "patient_family_member_id")
-    private FamilyMember patientFamilyMember;
 
     @Column(name = "symptoms", columnDefinition = "text")
     private String symptoms;
@@ -70,6 +64,29 @@ public class Consultation {
 
     @Column(name = "duration_minutes")
     private Integer durationMinutes;
+
+    @Column(name = "pain_level")
+    private Integer painLevel;
+
+    @ElementCollection
+    @CollectionTable(name = "consultation_affected_areas", joinColumns = @JoinColumn(name = "consultation_id"))
+    @Column(name = "area", nullable = false)
+    private List<String> affectedAreas = new ArrayList<>();
+
+    @Column(name = "street_address")
+    private String streetAddress;
+
+    @Column(name = "apartment_suite")
+    private String apartmentSuite;
+
+    @Column(name = "city")
+    private String city;
+
+    @Column(name = "latitude")
+    private Double latitude;
+
+    @Column(name = "longitude")
+    private Double longitude;
 
     @Column(name = "timestamp", nullable = false)
     private Instant timestamp = Instant.now();
@@ -99,22 +116,6 @@ public class Consultation {
 
     public void setPatient(Patient patient) {
         this.patient = patient;
-    }
-
-    public User getPatientUser() {
-        return patientUser;
-    }
-
-    public void setPatientUser(User patientUser) {
-        this.patientUser = patientUser;
-    }
-
-    public FamilyMember getPatientFamilyMember() {
-        return patientFamilyMember;
-    }
-
-    public void setPatientFamilyMember(FamilyMember patientFamilyMember) {
-        this.patientFamilyMember = patientFamilyMember;
     }
 
     public String getSymptoms() {
@@ -181,6 +182,62 @@ public class Consultation {
 
     public void setDurationMinutes(Integer durationMinutes) {
         this.durationMinutes = durationMinutes;
+    }
+
+    public Integer getPainLevel() {
+        return painLevel;
+    }
+
+    public void setPainLevel(Integer painLevel) {
+        this.painLevel = painLevel;
+    }
+
+    public List<String> getAffectedAreas() {
+        return affectedAreas;
+    }
+
+    public void setAffectedAreas(List<String> affectedAreas) {
+        this.affectedAreas = affectedAreas == null ? new ArrayList<>() : new ArrayList<>(affectedAreas);
+    }
+
+    public String getStreetAddress() {
+        return streetAddress;
+    }
+
+    public void setStreetAddress(String streetAddress) {
+        this.streetAddress = streetAddress;
+    }
+
+    public String getApartmentSuite() {
+        return apartmentSuite;
+    }
+
+    public void setApartmentSuite(String apartmentSuite) {
+        this.apartmentSuite = apartmentSuite;
+    }
+
+    public String getCity() {
+        return city;
+    }
+
+    public void setCity(String city) {
+        this.city = city;
+    }
+
+    public Double getLatitude() {
+        return latitude;
+    }
+
+    public void setLatitude(Double latitude) {
+        this.latitude = latitude;
+    }
+
+    public Double getLongitude() {
+        return longitude;
+    }
+
+    public void setLongitude(Double longitude) {
+        this.longitude = longitude;
     }
 
     public Instant getTimestamp() {

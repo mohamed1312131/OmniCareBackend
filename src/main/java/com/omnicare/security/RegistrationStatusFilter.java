@@ -41,6 +41,10 @@ public class RegistrationStatusFilter extends OncePerRequestFilter {
                 || path.equals("/api/auth/login")
                 || path.equals("/api/auth/register")
                 || path.equals("/api/auth/verify-email")
+                || path.equals("/api/auth/verify-email-otp")
+                || path.equals("/api/auth/set-phone")
+                || path.equals("/api/auth/request-phone-otp")
+                || path.equals("/api/auth/verify-phone-otp")
                 || path.equals("/api/auth/logout");
     }
 

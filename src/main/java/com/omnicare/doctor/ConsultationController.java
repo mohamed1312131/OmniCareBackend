@@ -20,6 +20,7 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 import java.util.UUID;
 
 @RestController
@@ -52,7 +53,20 @@ public class ConsultationController {
         this.patientAllergyRepository = patientAllergyRepository;
     }
 
-    public record CreateConsultationRequest(UUID doctorId, String symptoms, BigDecimal fee) {
+    public record CreateConsultationRequest(
+            UUID doctorId,
+            UUID patientId,
+            String symptoms,
+            Integer painLevel,
+            List<String> affectedAreas,
+            String streetAddress,
+            String apartmentSuite,
+            String city,
+            Double latitude,
+            Double longitude,
+            BigDecimal basePrice,
+            BigDecimal fee
+    ) {
     }
 
     public record PatchConsultationRequest(ConsultationStatus status, String diagnosis, String treatment) {
@@ -66,6 +80,13 @@ public class ConsultationController {
             String diagnosis,
             String treatment,
             ConsultationStatus status,
+            Integer painLevel,
+            List<String> affectedAreas,
+            String streetAddress,
+            String apartmentSuite,
+            String city,
+            Double latitude,
+            Double longitude,
             BigDecimal fee,
             BigDecimal netAmount,
             BigDecimal omnicareFee,
@@ -73,6 +94,7 @@ public class ConsultationController {
             String allergyWarning
     ) {
         static ConsultationFlowResponse from(Consultation c, String allergyWarning) {
+            List<String> affectedAreas = c.getAffectedAreas() == null ? List.of() : List.copyOf(c.getAffectedAreas());
             return new ConsultationFlowResponse(
                     c.getId(),
                     c.getDoctor() == null ? null : c.getDoctor().getId(),
@@ -81,6 +103,13 @@ public class ConsultationController {
                     c.getDiagnosis(),
                     c.getTreatment(),
                     c.getStatus(),
+                    c.getPainLevel(),
+                    affectedAreas,
+                    c.getStreetAddress(),
+                    c.getApartmentSuite(),
+                    c.getCity(),
+                    c.getLatitude(),
+                    c.getLongitude(),
                     c.getFee(),
                     c.getNetAmount(),
                     c.getOmnicareFee(),
@@ -103,19 +132,59 @@ public class ConsultationController {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "symptoms is required");
         }
 
+        if (request.painLevel() != null && (request.painLevel() < 1 || request.painLevel() > 10)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "painLevel must be between 1 and 10");
+        }
+
         Doctor doctor = doctorRepository.findById(request.doctorId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Doctor not found"));
 
-        Patient patient = patientService.ensureForUser(actor);
+        Patient patient;
+        if (request.patientId() != null) {
+            patient = patientRepository.findByIdAndOwnerUserId(request.patientId(), actor.getId())
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Patient not found"));
+        } else {
+            patient = patientService.ensureForUser(actor);
+        }
 
         Consultation c = new Consultation(doctor);
         c.setPatient(patient);
-        c.setPatientUser(actor);
         c.setSymptoms(request.symptoms().trim());
         c.setStatus(ConsultationStatus.PENDING);
-        if (request.fee() != null) {
+
+        if (request.basePrice() != null) {
+            c.setFee(request.basePrice());
+        } else if (request.fee() != null) {
             c.setFee(request.fee());
         }
+
+        c.setPainLevel(request.painLevel());
+
+        if (request.affectedAreas() != null) {
+            List<String> cleaned = request.affectedAreas().stream()
+                    .filter(Objects::nonNull)
+                    .map(String::trim)
+                    .filter(s -> !s.isEmpty())
+                    .distinct()
+                    .toList();
+            c.setAffectedAreas(cleaned);
+        }
+
+        if (request.streetAddress() != null) {
+            String trimmed = request.streetAddress().trim();
+            c.setStreetAddress(trimmed.isEmpty() ? null : trimmed);
+        }
+        if (request.apartmentSuite() != null) {
+            String trimmed = request.apartmentSuite().trim();
+            c.setApartmentSuite(trimmed.isEmpty() ? null : trimmed);
+        }
+        if (request.city() != null) {
+            String trimmed = request.city().trim();
+            c.setCity(trimmed.isEmpty() ? null : trimmed);
+        }
+        c.setLatitude(request.latitude());
+        c.setLongitude(request.longitude());
+
         c.setTimestamp(Instant.now());
 
         Consultation saved = consultationRepository.save(c);

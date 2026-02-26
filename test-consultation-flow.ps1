@@ -184,8 +184,20 @@ if ($doctorsArr.Length -lt 1) { throw "doctor list empty: $($docList.Status) $($
 
 Write-Host "Using authenticated doctorId for targeting: $doctorId" -ForegroundColor DarkGray
 
-Print-Step "INTERACTION: Create Consultation (PENDING, symptoms=High Fever, fee=100 TND)"
-$createConsult = Invoke-Api -Method POST -Path "/api/consultations" -Token $patientToken -Body @{ doctorId=$doctorId; symptoms="High Fever"; fee=100 }
+Print-Step "INTERACTION: Create Consultation (PENDING, symptoms=High Fever, basePrice=100 TND)"
+$createConsult = Invoke-Api -Method POST -Path "/api/consultations" -Token $patientToken -Body @{
+  doctorId=$doctorId
+  patientId=$sarahPatientId
+  symptoms="High Fever"
+  painLevel=8
+  affectedAreas=@("Head","Chest")
+  streetAddress="12 Rue Example"
+  apartmentSuite="Apt 5B"
+  city="Tunis"
+  latitude=36.8065
+  longitude=10.1815
+  basePrice=100
+}
 Print-Json $createConsult.Json
 if (-not $createConsult.Ok -or -not $createConsult.Json -or -not $createConsult.Json.id) { throw "create consultation failed: $($createConsult.Status) $($createConsult.Raw)" }
 $consultationId = $createConsult.Json.id
@@ -234,7 +246,7 @@ Print-Step "DBEAVER: SQL you can run to verify consultations + doctors"
 
 $sql = @()
 $sql += "-- 1) Verify the consultation row"
-$sql += "SELECT id, doctor_id, patient_id, patient_user_id, patient_family_member_id, status, symptoms, diagnosis, treatment, fee, payment_method, duration_minutes, timestamp"
+$sql += "SELECT id, doctor_id, patient_id, status, symptoms, diagnosis, treatment, fee, pain_level, street_address, apartment_suite, city, latitude, longitude, payment_method, duration_minutes, timestamp"
 $sql += "FROM consultations"
 $sql += "WHERE id = '$consultationId';"
 $sql += ""
