@@ -56,6 +56,7 @@ public class SecurityConfig {
                         .requestMatchers("/api/auth/set-phone").permitAll()
                         .requestMatchers("/api/auth/request-phone-otp").permitAll()
                         .requestMatchers("/api/auth/verify-phone-otp").permitAll()
+                        .requestMatchers("/api/medications/search").permitAll()
                         .requestMatchers("/api/**").authenticated()
                         .anyRequest().authenticated()
                 )

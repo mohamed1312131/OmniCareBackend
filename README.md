@@ -1,8 +1,8 @@
-# Omnicare API (Dev Setup)
+# OmniCare Backend (Spring Boot)
 
-## Setup (fast)
+## Quick start (Windows)
 
-1) Get `dev.env.ps1` from the backend dev (shared privately).
+1) Get `dev.env.ps1` (shared privately).
 
 2) Put it in the repo root (same folder as `run-dev.ps1`).
 
@@ -12,58 +12,27 @@
 .\run-dev.ps1
 ```
 
-## Important
-- `dev.env.ps1` contains secrets. Do not commit it. It is ignored by git.
-- Email verification links use `VERIFY_BASE_URL`. In production set it to your deployed backend URL (e.g. `https://api.yoursite.com`).
+## What starts
 
-## Test login
-
-1) Open the dev UI:
-- `http://localhost:8080/dev/index.html`
-
-2) Click **Login with Google**.
-
-3) After login, you will land on:
-- `http://localhost:8080/auth/dev/callback?token=...`
-
-4) Click **Open Dev UI with this token**.
-
-5) In the dev UI you should see:
-- `/api/account/me` returns your email + name and `hasPassword: false`
-- JWT payload contains `roles: ["PATIENT"]` and `registrationStatus: "PENDING_PASSWORD"`
-
-6) Set an initial password in the dev UI (calls `POST /api/auth/set-initial-password`).
-
-7) Re-login to refresh the JWT claims.
+- Postgres (Docker)
+- Redis (Docker)
+- Spring Boot app on:
+  - `http://localhost:8080`
+  - API base: `http://localhost:8080/api`
 
 ## Notes
-- OTP is not implemented yet, so after setting a password your DB status becomes `PENDING_OTP` and you still won’t be `ACTIVE`.
-- Most `/api/**` endpoints return `403` until the user becomes `ACTIVE`.
 
-## (Optional) Backend-only test
+- `dev.env.ps1` contains secrets. **Do not commit it**.
+- Email verification is OTP-based (`POST /api/auth/verify-email-otp`).
+- Medication autocomplete for onboarding uses:
+  - `GET /api/medications/search?q=asp`
+  - This endpoint is public in dev so the signup flow can use it.
 
-### Email + password (no Google)
+## Handy endpoints
 
-```powershell
-$registerBody = @{ email = "test2@example.com"; name = "Test Two"; password = "password" } | ConvertTo-Json
-try {
-  Invoke-RestMethod -Method Post -Uri "http://localhost:8080/api/auth/register" -ContentType "application/json" -Body $registerBody | Out-Null
-} catch {
-}
-
-# Check Mailtrap inbox and open the verification link (GET /api/auth/verify-email?token=...)
-
-$loginBody = @{ email = "test2@example.com"; password = "password" } | ConvertTo-Json
-$login = Invoke-RestMethod -Method Post -Uri "http://localhost:8080/api/auth/login" -ContentType "application/json" -Body $loginBody
-$token = $login.token
-
-if (-not $token) { throw "No token returned" }
-
-$patchBody = @{ name = "Test Two Renamed" } | ConvertTo-Json
-Invoke-RestMethod -Method Patch -Uri "http://localhost:8080/api/users/me" -ContentType "application/json" -Headers @{ Authorization = "Bearer $token" } -Body $patchBody
-```
-
-```powershell
-$token = "<paste token>"
-curl.exe -H "Authorization: Bearer $token" http://localhost:8080/api/account/me
-```
+- `POST /api/auth/register`
+- `POST /api/auth/login`
+- `POST /api/auth/verify-email-otp`
+- `POST /api/auth/set-phone`
+- `POST /api/auth/request-phone-otp`
+- `POST /api/auth/verify-phone-otp`

@@ -54,12 +54,8 @@ public class MedicationController {
 
     @GetMapping("/search")
     public List<MedicationSearchResult> search(
-            Authentication authentication,
             @RequestParam("q") String q
     ) {
-        if (authentication == null) {
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED);
-        }
         if (q == null || q.isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "q is required");
         }
