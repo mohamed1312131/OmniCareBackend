@@ -1,7 +1,7 @@
 package com.omnicare.family;
 
 import com.omnicare.passport.BloodGroup;
-import com.omnicare.user.User;
+import com.omnicare.profile.model.User;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;

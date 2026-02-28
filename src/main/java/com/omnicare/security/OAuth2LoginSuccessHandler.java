@@ -1,10 +1,12 @@
 package com.omnicare.security;
 
 import com.omnicare.config.AppProperties;
-import com.omnicare.user.User;
-import com.omnicare.user.UserRepository;
-import com.omnicare.user.RegistrationStatus;
-import com.omnicare.user.UserRole;
+import com.omnicare.profile.model.RegistrationStatus;
+import com.omnicare.profile.model.UserRole;
+import com.omnicare.profile.model.User;
+import com.omnicare.profile.repository.UserRepository;
+import com.omnicare.security.service.JwtService;
+
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;

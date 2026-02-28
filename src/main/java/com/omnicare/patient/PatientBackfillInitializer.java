@@ -1,8 +1,9 @@
 package com.omnicare.patient;
 
 import com.omnicare.family.FamilyMemberRepository;
-import com.omnicare.user.User;
-import com.omnicare.user.UserRepository;
+import com.omnicare.patient.service.PatientService;
+import com.omnicare.profile.model.User;
+import com.omnicare.profile.repository.UserRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.CommandLineRunner;

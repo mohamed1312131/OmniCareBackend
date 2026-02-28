@@ -1,9 +1,9 @@
 package com.omnicare.family;
 
-import com.omnicare.user.User;
-import com.omnicare.user.UserRepository;
-import com.omnicare.patient.PatientService;
-import com.omnicare.patient.PatientRepository;
+import com.omnicare.profile.model.User;
+import com.omnicare.profile.repository.UserRepository;
+import com.omnicare.patient.service.PatientService;
+import com.omnicare.patient.repository.PatientRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;

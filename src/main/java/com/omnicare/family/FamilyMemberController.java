@@ -2,8 +2,8 @@ package com.omnicare.family;
 
 import com.omnicare.passport.BloodGroup;
 import com.omnicare.passport.MedicalInfoValidator;
-import com.omnicare.user.User;
-import com.omnicare.user.UserRepository;
+import com.omnicare.profile.model.User;
+import com.omnicare.profile.repository.UserRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.oauth2.jwt.Jwt;
