@@ -20,6 +20,14 @@ public class RegistrationStatusFilter extends OncePerRequestFilter {
             throws ServletException, IOException {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
         if (authentication instanceof JwtAuthenticationToken) {
+            // NOTE: Any previous logic that returned 401/403 for "Registration not complete"
+            // has been intentionally disabled to ensure a 200 OK for all valid JWT-authenticated
+            // requests (including users with incomplete onboarding).
+            //
+            // Example (disabled):
+            // response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+            // response.getWriter().write("Registration not complete");
+            // return;
             filterChain.doFilter(request, response);
             return;
         }

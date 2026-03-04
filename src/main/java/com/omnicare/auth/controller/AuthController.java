@@ -150,6 +150,8 @@ public class AuthController {
 
         email = email.trim().toLowerCase();
 
+        System.out.println("DEBUG: Authenticating user: " + email);
+
         String firstName = (String) payload.get("given_name");
         String lastName = (String) payload.get("family_name");
         if (firstName != null) {
