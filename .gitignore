@@ -1,13 +1,16 @@
+# Local dev secrets
+/dev.env.ps1
+
 # Maven
-target/
+/target/
 !.mvn/wrapper/maven-wrapper.jar
 
 # IDEs
-.idea/
+/.idea/
+/.vscode/
 *.iml
 *.ipr
 *.iws
-.vscode/
 *.classpath
 *.project
 *.settings/
@@ -31,3 +34,8 @@ node_modules/
 *.local
 application-*.yml
 application-*.properties
+
+# Office / temp files
+*.docx
+*.pdf
+~$*.docx

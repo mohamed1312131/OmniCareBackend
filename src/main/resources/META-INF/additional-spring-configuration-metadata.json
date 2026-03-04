@@ -1,0 +1,25 @@
+{
+  "properties": [
+    {
+      "name": "app.cors.allowed-origin",
+      "type": "java.lang.String",
+      "description": "Allowed Origin for CORS requests."
+    },
+    {
+      "name": "app.oauth2.redirect-uri",
+      "type": "java.lang.String",
+      "description": "Frontend redirect URI after successful OAuth2 login."
+    },
+    {
+      "name": "app.jwt.secret",
+      "type": "java.lang.String",
+      "description": "Secret used to sign JWT tokens (HS256)."
+    },
+    {
+      "name": "app.jwt.ttl-seconds",
+      "type": "java.lang.Long",
+      "defaultValue": 3600,
+      "description": "JWT time-to-live in seconds."
+    }
+  ]
+}
