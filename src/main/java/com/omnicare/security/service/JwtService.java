@@ -24,6 +24,10 @@ public class JwtService {
         this.ttlSeconds = appProperties.jwt().ttlSeconds();
     }
 
+    public long getTtlSeconds() {
+        return ttlSeconds;
+    }
+
     public String createToken(User user) {
         Instant now = Instant.now();
         Instant expiresAt = now.plusSeconds(ttlSeconds);

@@ -55,13 +55,16 @@ public class SecurityConfig {
                         .requestMatchers("/", "/error", "/login/**", "/oauth2/**", "/auth/dev/**", "/dev/**").permitAll()
                         .requestMatchers("/api/auth/login").permitAll()
                         .requestMatchers("/api/auth/register").permitAll()
+                        .requestMatchers("/api/auth/google").permitAll()
                         .requestMatchers("/api/auth/verify-email").permitAll()
                         .requestMatchers("/api/auth/verify-email-otp").permitAll()
                         .requestMatchers("/api/auth/set-phone").permitAll()
                         .requestMatchers("/api/auth/request-phone-otp").permitAll()
                         .requestMatchers("/api/auth/verify-phone-otp").permitAll()
                         .requestMatchers("/api/medications/search").permitAll()
+                        .requestMatchers("/v1/auth/**").permitAll()
                         .requestMatchers("/api/**").authenticated()
+                        .requestMatchers("/v1/**").authenticated()
                         .anyRequest().authenticated()
                 )
                 .oauth2Login(oauth2 -> oauth2
@@ -96,7 +99,6 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource(AppProperties appProperties) {
         CorsConfiguration configuration = new CorsConfiguration();
-        configuration.setAllowedOrigins(List.of(appProperties.cors().allowedOrigin()));
         configuration.setAllowedOriginPatterns(List.of("http://localhost:*", "http://127.0.0.1:*"));
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(List.of("Authorization", "Content-Type"));

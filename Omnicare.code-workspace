@@ -5,6 +5,9 @@
 		},
 		{
 			"path": "../OmnicareFrontend"
+		},
+		{
+			"path": "../Omnicaredemo"
 		}
 	],
 	"settings": {

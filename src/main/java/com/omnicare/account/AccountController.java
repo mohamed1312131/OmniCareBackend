@@ -9,6 +9,7 @@ import com.omnicare.passport.BloodGroup;
 import com.omnicare.passport.MedicalInfoValidator;
 import com.omnicare.profile.model.User;
 import com.omnicare.profile.repository.UserRepository;
+import com.omnicare.api.ApiResponse;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -30,7 +31,7 @@ import java.util.Map;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/api/account")
+@RequestMapping({"/api/account", "/v1/account"})
 public class AccountController {
 
     private final UserRepository userRepository;
@@ -56,9 +57,29 @@ public class AccountController {
     public record UpdateMedicalPassportRequest(BloodGroup bloodGroup, Map<String, Object> medicalInfo) {
     }
 
-    public record MedicalPassportResponse(String email, String name, BloodGroup bloodGroup, Map<String, Object> medicalInfo) {
+    public record UserProfileResponse(String firstName, String lastName, String avatar) {
+    }
+
+    public record MedicalPassportResponse(
+            String email,
+            String name,
+            String firstName,
+            String lastName,
+            UserProfileResponse profile,
+            BloodGroup bloodGroup,
+            Map<String, Object> medicalInfo
+    ) {
         public static MedicalPassportResponse from(User user) {
-            return new MedicalPassportResponse(user.getEmail(), user.getName(), user.getBloodGroup(), user.getMedicalInfo());
+            UserProfileResponse profile = new UserProfileResponse(user.getFirstName(), user.getLastName(), null);
+            return new MedicalPassportResponse(
+                    user.getEmail(),
+                    user.getName(),
+                    user.getFirstName(),
+                    user.getLastName(),
+                    profile,
+                    user.getBloodGroup(),
+                    user.getMedicalInfo()
+            );
         }
     }
 
@@ -119,7 +140,7 @@ public class AccountController {
 
     @GetMapping("/full-profile")
     @Transactional(readOnly = true)
-    public FullProfileResponse fullProfile(Authentication authentication) {
+    public ApiResponse<FullProfileResponse> fullProfile(Authentication authentication) {
         User user = requireUser(authentication);
 
         List<FamilyMemberProfile> family = familyMemberRepository.findAllByUserId(user.getId()).stream()
@@ -130,7 +151,7 @@ public class AccountController {
                 .map(MedicalDocumentResponse::from)
                 .toList();
 
-        return new FullProfileResponse(MedicalPassportResponse.from(user), family, documents);
+        return ApiResponse.success(new FullProfileResponse(MedicalPassportResponse.from(user), family, documents));
     }
 
     @PostMapping("/password")

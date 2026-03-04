@@ -1,6 +1,7 @@
 package com.omnicare.auth.controller;
 
 import com.omnicare.auth.service.EmailVerificationService;
+import com.omnicare.auth.service.GoogleAuthService;
 import com.omnicare.patient.service.PatientService;
 import com.omnicare.profile.model.User;
 import com.omnicare.profile.repository.UserRepository;
@@ -8,6 +9,7 @@ import com.omnicare.security.service.JwtService;
 import com.omnicare.security.service.TokenRevocationService;
 import com.omnicare.profile.model.RegistrationStatus;
 import com.omnicare.profile.model.UserRole;
+import com.omnicare.api.ApiResponse;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
@@ -28,7 +30,7 @@ import org.springframework.web.server.ResponseStatusException;
 import org.springframework.transaction.annotation.Transactional;
 
 @RestController
-@RequestMapping("/api/auth")
+@RequestMapping({"/api/auth", "/v1/auth"})
 public class AuthController {
 
     private final TokenRevocationService tokenRevocationService;
@@ -38,6 +40,7 @@ public class AuthController {
     private final JwtService jwtService;
     private final EmailVerificationService emailVerificationService;
     private final PatientService patientService;
+    private final GoogleAuthService googleAuthService;
 
     public AuthController(
             TokenRevocationService tokenRevocationService,
@@ -46,7 +49,8 @@ public class AuthController {
             AuthenticationManager authenticationManager,
             JwtService jwtService,
             EmailVerificationService emailVerificationService,
-            PatientService patientService
+            PatientService patientService,
+            GoogleAuthService googleAuthService
     ) {
         this.tokenRevocationService = tokenRevocationService;
         this.userRepository = userRepository;
@@ -55,6 +59,7 @@ public class AuthController {
         this.jwtService = jwtService;
         this.emailVerificationService = emailVerificationService;
         this.patientService = patientService;
+        this.googleAuthService = googleAuthService;
     }
 
     public record SetInitialPasswordRequest(String password) {
@@ -63,7 +68,28 @@ public class AuthController {
     public record LoginRequest(String email, String password) {
     }
 
-    public record LoginResponse(String token) {
+    public record LoginResponseData(String accessToken, String refreshToken, long expiresIn, UserResponse user) {
+    }
+
+    public record GoogleLoginRequest(String idToken, String language) {
+    }
+
+    public record GoogleLoginResponseData(boolean isNewUser, String accessToken, String refreshToken, long expiresIn, UserResponse user) {
+    }
+
+    public record UserProfileResponse(String firstName, String lastName, String avatar) {
+    }
+
+    public record UserResponse(
+            String id,
+            String email,
+            String phoneNumber,
+            boolean emailVerified,
+            boolean phoneVerified,
+            String language,
+            boolean onboardingComplete,
+            UserProfileResponse profile
+    ) {
     }
 
     public record RegisterResponse(String message) {
@@ -79,7 +105,7 @@ public class AuthController {
     }
 
     @PostMapping("/login")
-    public LoginResponse login(@RequestBody LoginRequest request) {
+    public ApiResponse<LoginResponseData> login(@RequestBody LoginRequest request) {
         if (request == null || request.email() == null || request.email().isBlank() || request.password() == null || request.password().isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "email and password are required");
         }
@@ -101,7 +127,101 @@ public class AuthController {
         }
 
         String token = jwtService.createToken(user);
-        return new LoginResponse(token);
+        long expiresIn = jwtService.getTtlSeconds();
+
+        boolean onboardingComplete = isOnboardingComplete(user);
+        UserResponse userResponse = toUserResponse(user, null, onboardingComplete);
+        LoginResponseData data = new LoginResponseData(token, token, expiresIn, userResponse);
+        return ApiResponse.success("Login successful", data);
+    }
+
+    @PostMapping("/google")
+    @Transactional
+    public ApiResponse<GoogleLoginResponseData> google(@RequestBody GoogleLoginRequest request) {
+        if (request == null || request.idToken() == null || request.idToken().isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "idToken is required");
+        }
+
+        var payload = googleAuthService.verifyIdTokenOrThrow(request.idToken());
+        String email = payload.getEmail();
+        if (email == null || email.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Missing email in Google token");
+        }
+
+        email = email.trim().toLowerCase();
+
+        String firstName = (String) payload.get("given_name");
+        String lastName = (String) payload.get("family_name");
+        if (firstName != null) {
+            firstName = firstName.trim();
+            if (firstName.isEmpty()) firstName = null;
+        }
+        if (lastName != null) {
+            lastName = lastName.trim();
+            if (lastName.isEmpty()) lastName = null;
+        }
+
+        String name = (String) payload.get("name");
+        String resolvedName;
+        if ((firstName != null && !firstName.isBlank()) || (lastName != null && !lastName.isBlank())) {
+            resolvedName = ((firstName == null) ? "" : firstName) + ((lastName == null) ? "" : (" " + lastName));
+            resolvedName = resolvedName.trim();
+        } else {
+            resolvedName = (name == null || name.isBlank()) ? email : name.trim();
+        }
+
+        final String finalEmail = email;
+        final String finalResolvedName = resolvedName;
+
+        var existing = userRepository.findByEmail(finalEmail);
+        boolean isNewUser = existing.isEmpty();
+
+        User user = existing.orElseGet(() -> new User(finalEmail, finalResolvedName));
+
+        user.setEmail(finalEmail);
+        user.setName(resolvedName);
+        user.setFirstName(firstName);
+        user.setLastName(lastName);
+        user.setEmailVerified(true);
+
+        if (user.getRole() == null) {
+            user.setRole(UserRole.PATIENT);
+        }
+        if (user.getRegistrationStatus() == null) {
+            user.setRegistrationStatus(RegistrationStatus.PENDING_PASSWORD);
+        }
+
+        user = userRepository.save(user);
+        patientService.ensureForUser(user);
+
+        String token = jwtService.createToken(user);
+        long expiresIn = jwtService.getTtlSeconds();
+        boolean onboardingComplete = isOnboardingComplete(user);
+        UserResponse userResponse = toUserResponse(user, request.language(), onboardingComplete);
+        GoogleLoginResponseData data = new GoogleLoginResponseData(isNewUser, token, token, expiresIn, userResponse);
+        return ApiResponse.success("Google sign-in successful", data);
+    }
+
+    private static boolean isOnboardingComplete(User user) {
+        return user != null
+                && user.isEmailVerified()
+                && user.isPhoneVerified()
+                && user.getRegistrationStatus() == RegistrationStatus.ACTIVE;
+    }
+
+    private static UserResponse toUserResponse(User user, String language, boolean onboardingComplete) {
+        String userId = user.getId() == null ? null : user.getId().toString();
+        UserProfileResponse profile = new UserProfileResponse(user.getFirstName(), user.getLastName(), null);
+        return new UserResponse(
+                userId,
+                user.getEmail(),
+                user.getPhoneNumber(),
+                user.isEmailVerified(),
+                user.isPhoneVerified(),
+                (language == null || language.isBlank()) ? "en" : language,
+                onboardingComplete,
+                profile
+        );
     }
 
     @PostMapping("/register")
