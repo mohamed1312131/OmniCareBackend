@@ -4,6 +4,8 @@ import com.omnicare.config.AppProperties;
 import com.omnicare.mail.MailService;
 import com.omnicare.profile.model.User;
 import com.omnicare.profile.repository.UserRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -19,6 +21,8 @@ import java.util.concurrent.ThreadLocalRandom;
 
 @Service
 public class EmailVerificationService {
+
+    private static final Logger log = LoggerFactory.getLogger(EmailVerificationService.class);
 
     private final UserRepository userRepository;
     private final MailService mailService;
@@ -38,6 +42,8 @@ public class EmailVerificationService {
         String rawToken = generateVerificationCode();
         String tokenHash = sha256Hex((user.getEmail() == null ? "" : user.getEmail().trim().toLowerCase()) + ":" + rawToken);
 
+        System.out.println("[TESTING] Generated email verification OTP for " + user.getEmail() + " is " + rawToken);
+
         user.setEmailVerified(false);
         user.setEmailVerificationTokenHash(tokenHash);
         user.setEmailVerificationExpiresAt(Instant.now().plus(24, ChronoUnit.HOURS));
@@ -48,6 +54,9 @@ public class EmailVerificationService {
 
     public void sendVerificationEmail(User user, String rawToken) {
         String subject = "Verify your email";
+
+        log.info("[TESTING] Email verification OTP for {} is {}", user.getEmail(), rawToken);
+        System.out.println("[TESTING] Email verification OTP for " + user.getEmail() + " is " + rawToken);
 
         String displayName = user.getName() == null || user.getName().isBlank()
                 ? "there"

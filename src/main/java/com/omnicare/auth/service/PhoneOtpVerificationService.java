@@ -62,6 +62,11 @@ public class PhoneOtpVerificationService {
             throw new ResponseStatusException(HttpStatus.GONE, "OTP expired");
         }
 
+        String providedHash = sha256Hex(otp.trim());
+        if (!providedHash.equals(v.getCodeHash())) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid OTP");
+        }
+
         v.setConsumedAt(Instant.now());
         repository.save(v);
     }
