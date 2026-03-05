@@ -17,8 +17,9 @@ public class GoogleAuthService {
     private final GoogleIdTokenVerifier verifier;
 
     public GoogleAuthService(@Value("${spring.security.oauth2.client.registration.google.client-id:}") String googleClientId) {
-        if (googleClientId == null || googleClientId.isBlank()) {
-            throw new IllegalStateException("Missing Google client id: spring.security.oauth2.client.registration.google.client-id");
+        if (googleClientId == null || googleClientId.isBlank() || "__disabled__".equalsIgnoreCase(googleClientId.trim())) {
+            this.verifier = null;
+            return;
         }
 
         try {
@@ -34,6 +35,9 @@ public class GoogleAuthService {
     }
 
     public GoogleIdToken.Payload verifyIdTokenOrThrow(String idTokenString) {
+        if (verifier == null) {
+            throw new IllegalStateException("Google login is not configured on this server (missing spring.security.oauth2.client.registration.google.client-id)");
+        }
         if (idTokenString == null || idTokenString.isBlank()) {
             throw new IllegalArgumentException("idToken is required");
         }

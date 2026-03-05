@@ -16,6 +16,7 @@ import com.omnicare.patient.service.PatientService;
 import com.omnicare.prescription.model.Prescription;
 import com.omnicare.prescription.model.PrescriptionItem;
 import com.omnicare.prescription.repository.PrescriptionRepository;
+import com.omnicare.prescription.service.PrescriptionService;
 import com.omnicare.profile.model.RegistrationStatus;
 import com.omnicare.profile.model.UserRole;
 import com.omnicare.profile.model.User;
@@ -26,6 +27,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -37,9 +39,10 @@ import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
+import java.util.UUID;
 
 @RestController
-@RequestMapping("/auth/dev")
+@RequestMapping({"/auth/dev", "/api/auth/dev"})
 public class DevProfessionalSeedController {
 
     private final UserRepository userRepository;
@@ -50,6 +53,7 @@ public class DevProfessionalSeedController {
     private final PatientService patientService;
     private final PrescriptionRepository prescriptionRepository;
     private final MedicationRepository medicationRepository;
+    private final PrescriptionService prescriptionService;
 
     public DevProfessionalSeedController(
             UserRepository userRepository,
@@ -59,7 +63,8 @@ public class DevProfessionalSeedController {
             DoctorDocumentRepository doctorDocumentRepository,
             PatientService patientService,
             PrescriptionRepository prescriptionRepository,
-            MedicationRepository medicationRepository
+            MedicationRepository medicationRepository,
+            PrescriptionService prescriptionService
     ) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
@@ -69,6 +74,148 @@ public class DevProfessionalSeedController {
         this.patientService = patientService;
         this.prescriptionRepository = prescriptionRepository;
         this.medicationRepository = medicationRepository;
+        this.prescriptionService = prescriptionService;
+    }
+
+    public record EnsureFakeDoctorResponse(UUID doctorId, String email, String password) {
+    }
+
+    @PostMapping("/ensure-fake-doctor")
+    @Transactional
+    public EnsureFakeDoctorResponse ensureFakeDoctor() {
+        String email = "fake.doctor@dev.local";
+        String password = "Passw0rd!123";
+
+        User doctorUser = userRepository.findByEmail(email).orElseGet(() -> {
+            User u = new User(email, "Fake Doctor");
+            u.setRole(UserRole.DOCTOR);
+            u.setRegistrationStatus(RegistrationStatus.ACTIVE);
+            u.setEmailVerified(true);
+            u.setPasswordHash(passwordEncoder.encode(password));
+            return userRepository.save(u);
+        });
+
+        if (doctorUser.getRole() != UserRole.DOCTOR) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Existing user is not a DOCTOR");
+        }
+
+        Doctor doctor = doctorRepository.findByUserId(doctorUser.getId()).orElseGet(() -> doctorRepository.save(new Doctor(doctorUser)));
+        if (doctor.getSpecialty() == null || doctor.getSpecialty().isBlank()) {
+            doctor.setSpecialty("General Practitioner");
+            doctorRepository.save(doctor);
+        }
+
+        return new EnsureFakeDoctorResponse(doctor.getId(), doctorUser.getEmail(), password);
+    }
+
+    public record AutoCompleteConsultationRequest(
+            String diagnosis,
+            String treatment,
+            String clinicalNotes
+    ) {
+    }
+
+    public record AutoCompleteConsultationResponse(
+            UUID consultationId,
+            UUID prescriptionId,
+            int itemsCount
+    ) {
+    }
+
+    @PostMapping("/consultations/{id}/auto-complete")
+    @Transactional
+    public AutoCompleteConsultationResponse autoCompleteConsultation(@PathVariable("id") UUID consultationId, @RequestBody(required = false) AutoCompleteConsultationRequest request) {
+        if (consultationId == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "consultationId is required");
+        }
+
+        // Ensure we have a dev doctor user to act as prescriber.
+        EnsureFakeDoctorResponse fake = ensureFakeDoctor();
+        User doctorUser = userRepository.findByEmail(fake.email())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Fake doctor user not found"));
+
+        Consultation c = consultationRepository.findById(consultationId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Consultation not found"));
+
+        if (c.getDoctor() == null) {
+            Doctor doctor = doctorRepository.findById(fake.doctorId())
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Fake doctor not found"));
+            c.setDoctor(doctor);
+        }
+
+        c.setStatus(ConsultationStatus.COMPLETED);
+        String diagnosis = request == null ? null : request.diagnosis();
+        String treatment = request == null ? null : request.treatment();
+        String clinicalNotes = request == null ? null : request.clinicalNotes();
+
+        if (diagnosis != null && !diagnosis.isBlank()) {
+            c.setDiagnosis(diagnosis.trim());
+        } else if (c.getDiagnosis() == null || c.getDiagnosis().isBlank()) {
+            c.setDiagnosis("Follow-up required");
+        }
+
+        if (treatment != null && !treatment.isBlank()) {
+            c.setTreatment(treatment.trim());
+        } else if (c.getTreatment() == null || c.getTreatment().isBlank()) {
+            c.setTreatment("Rest + hydration");
+        }
+
+        if (clinicalNotes != null && !clinicalNotes.isBlank()) {
+            c.setClinicalNotes(clinicalNotes.trim());
+        } else if (c.getClinicalNotes() == null || c.getClinicalNotes().isBlank()) {
+            c.setClinicalNotes("Auto-completed by dev endpoint");
+        }
+
+        consultationRepository.save(c);
+        consultationRepository.flush();
+
+        Random r = new Random();
+        int itemsCount = 1 + r.nextInt(3);
+        List<PrescriptionService.CreateItemRequest> items = new ArrayList<>();
+
+        for (int i = 0; i < itemsCount; i++) {
+            Medication med = pickRandomMedication(r);
+            if (med == null || med.getId() == null) {
+                continue;
+            }
+
+            int frequencyTimes = 1 + r.nextInt(3);
+            int frequencyPeriodDays = 1;
+            int durationDays = 3 + r.nextInt(8);
+
+            items.add(new PrescriptionService.CreateItemRequest(
+                    med.getId(),
+                    null,
+                    null,
+                    frequencyTimes,
+                    frequencyPeriodDays,
+                    durationDays,
+                    null,
+                    null
+            ));
+        }
+
+        PrescriptionService.CreateRequest presRequest = new PrescriptionService.CreateRequest(
+                null,
+                Instant.now(),
+                "Auto-generated ordonnance for consultation " + c.getId(),
+                items
+        );
+
+        try {
+            Prescription created = prescriptionService.createOrReplaceForConsultationAsDoctor(c.getId(), doctorUser.getId(), presRequest);
+            prescriptionRepository.flush();
+            return new AutoCompleteConsultationResponse(c.getId(), created.getId(), created.getItems() == null ? 0 : created.getItems().size());
+        } catch (ResponseStatusException ex) {
+            throw ex;
+        } catch (Exception ex) {
+            ex.printStackTrace();
+            String msg = ex.getMessage();
+            if (msg == null || msg.isBlank()) {
+                msg = ex.getClass().getSimpleName();
+            }
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Auto-complete failed: " + msg);
+        }
     }
 
     public record SeedProfessionalRequest(

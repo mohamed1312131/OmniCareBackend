@@ -11,6 +11,9 @@ import com.omnicare.doctor.model.Consultation;
 import com.omnicare.doctor.model.ConsultationStatus;
 import com.omnicare.doctor.model.Doctor;
 import com.omnicare.doctor.service.DoctorService;
+import com.omnicare.prescription.service.PrescriptionService;
+import com.omnicare.prescription.model.Prescription;
+import com.omnicare.prescription.model.PrescriptionItem;
 import com.omnicare.profile.model.UserRole;
 import com.omnicare.profile.model.User;
 import com.omnicare.profile.repository.UserRepository;
@@ -41,6 +44,7 @@ public class ConsultationController {
     private final PatientService patientService;
     private final PatientRepository patientRepository;
     private final PatientAllergyRepository patientAllergyRepository;
+    private final PrescriptionService prescriptionService;
 
     public ConsultationController(
             UserRepository userRepository,
@@ -49,7 +53,8 @@ public class ConsultationController {
             ConsultationRepository consultationRepository,
             PatientService patientService,
             PatientRepository patientRepository,
-            PatientAllergyRepository patientAllergyRepository
+            PatientAllergyRepository patientAllergyRepository,
+            PrescriptionService prescriptionService
     ) {
         this.userRepository = userRepository;
         this.doctorService = doctorService;
@@ -58,6 +63,32 @@ public class ConsultationController {
         this.patientService = patientService;
         this.patientRepository = patientRepository;
         this.patientAllergyRepository = patientAllergyRepository;
+        this.prescriptionService = prescriptionService;
+    }
+
+    @GetMapping
+    @Transactional(readOnly = true)
+    public List<ConsultationFlowResponse> list(Authentication authentication, @RequestParam(value = "status", required = false) ConsultationStatus status) {
+        User actor = requireUser(authentication);
+
+        if (actor.getRole() == UserRole.DOCTOR) {
+            Doctor doctor = doctorService.ensureForDoctorUser(actor);
+            List<Consultation> rows = (status == null)
+                    ? consultationRepository.findAllByDoctorIdOrderByTimestampDesc(doctor.getId())
+                    : consultationRepository.findAllByDoctorIdAndStatusOrderByTimestampDesc(doctor.getId(), status);
+            return rows.stream().map(c -> ConsultationFlowResponse.from(c, computeAllergyWarning(c))).toList();
+        }
+
+        if (actor.getRole() == UserRole.PATIENT) {
+            Patient patient = patientService.ensureForUser(actor);
+            List<Consultation> rows = consultationRepository.findAllByPatientIdOrderByTimestampDesc(patient.getId());
+            if (status != null) {
+                rows = rows.stream().filter(c -> status == c.getStatus()).toList();
+            }
+            return rows.stream().map(c -> ConsultationFlowResponse.from(c, computeAllergyWarning(c))).toList();
+        }
+
+        throw new ResponseStatusException(HttpStatus.FORBIDDEN);
     }
 
     public record CreateConsultationRequest(
@@ -82,7 +113,10 @@ public class ConsultationController {
     public record ConsultationFlowResponse(
             UUID id,
             UUID doctorId,
+            String doctorName,
+            String doctorSpecialty,
             UUID patientId,
+            String patientName,
             String symptoms,
             String diagnosis,
             String treatment,
@@ -102,10 +136,32 @@ public class ConsultationController {
     ) {
         static ConsultationFlowResponse from(Consultation c, String allergyWarning) {
             List<String> affectedAreas = c.getAffectedAreas() == null ? List.of() : List.copyOf(c.getAffectedAreas());
+
+            String doctorName = null;
+            String doctorSpecialty = null;
+            if (c.getDoctor() != null) {
+                doctorSpecialty = c.getDoctor().getSpecialty();
+                if (c.getDoctor().getUser() != null) {
+                    doctorName = c.getDoctor().getUser().getName();
+                }
+            }
+
+            String patientName = null;
+            if (c.getPatient() != null) {
+                if (c.getPatient().getUser() != null) {
+                    patientName = c.getPatient().getUser().getName();
+                } else if (c.getPatient().getOwnerUser() != null) {
+                    patientName = c.getPatient().getOwnerUser().getName();
+                }
+            }
+
             return new ConsultationFlowResponse(
                     c.getId(),
                     c.getDoctor() == null ? null : c.getDoctor().getId(),
+                    doctorName,
+                    doctorSpecialty,
                     c.getPatient() == null ? null : c.getPatient().getId(),
+                    patientName,
                     c.getSymptoms(),
                     c.getDiagnosis(),
                     c.getTreatment(),
@@ -126,11 +182,70 @@ public class ConsultationController {
         }
     }
 
+    public record ConsultationPrescriptionItemResponse(
+            UUID id,
+            UUID medicationId,
+            String medicationName,
+            java.math.BigDecimal doseAmount,
+            String doseUnit,
+            int frequencyTimes,
+            int frequencyPeriodDays,
+            int durationDays,
+            java.time.LocalDate startDate,
+            String instructions
+    ) {
+        static ConsultationPrescriptionItemResponse from(PrescriptionItem i) {
+            return new ConsultationPrescriptionItemResponse(
+                    i.getId(),
+                    i.getMedication() == null ? null : i.getMedication().getId(),
+                    i.getMedication() == null ? null : i.getMedication().getName(),
+                    i.getDoseAmount(),
+                    i.getDoseUnit(),
+                    i.getFrequencyTimes(),
+                    i.getFrequencyPeriodDays(),
+                    i.getDurationDays(),
+                    i.getStartDate(),
+                    i.getInstructions()
+            );
+        }
+    }
+
+    public record ConsultationPrescriptionResponse(
+            UUID id,
+            UUID consultationId,
+            UUID patientId,
+            UUID prescriberUserId,
+            Instant issuedAt,
+            com.omnicare.prescription.model.PrescriptionStatus status,
+            String notes,
+            List<ConsultationPrescriptionItemResponse> items
+    ) {
+        static ConsultationPrescriptionResponse from(Prescription p) {
+            UUID prescriberId = p.getPrescriberUser() == null ? null : p.getPrescriberUser().getId();
+            UUID consultationId = p.getConsultation() == null ? null : p.getConsultation().getId();
+            return new ConsultationPrescriptionResponse(
+                    p.getId(),
+                    consultationId,
+                    p.getPatient() == null ? null : p.getPatient().getId(),
+                    prescriberId,
+                    p.getIssuedAt(),
+                    p.getStatus(),
+                    p.getNotes(),
+                    (p.getItems() == null ? List.of() : p.getItems().stream().map(ConsultationPrescriptionItemResponse::from).toList())
+            );
+        }
+    }
+
     @PostMapping
     @Transactional
     public ConsultationFlowResponse create(Authentication authentication, @RequestBody CreateConsultationRequest request) {
         User actor = requireUser(authentication);
-        requirePatient(actor);
+
+        final boolean isDoctorActor = actor.getRole() == UserRole.DOCTOR;
+        final boolean isPatientActor = actor.getRole() == UserRole.PATIENT;
+        if (!isDoctorActor && !isPatientActor) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN);
+        }
 
         if (request == null || request.doctorId() == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "doctorId is required");
@@ -143,15 +258,32 @@ public class ConsultationController {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "painLevel must be between 1 and 10");
         }
 
-        Doctor doctor = doctorRepository.findById(request.doctorId())
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Doctor not found"));
+        Doctor doctor;
+        if (isDoctorActor) {
+            Doctor actorDoctor = doctorService.ensureForDoctorUser(actor);
+            if (request.doctorId() != null && !request.doctorId().equals(actorDoctor.getId())) {
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN, "doctorId must match authenticated doctor");
+            }
+            doctor = actorDoctor;
+        } else {
+            doctor = doctorRepository.findById(request.doctorId())
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Doctor not found"));
+        }
 
         Patient patient;
-        if (request.patientId() != null) {
-            patient = patientRepository.findByIdAndOwnerUserId(request.patientId(), actor.getId())
+        if (isDoctorActor) {
+            if (request.patientId() == null) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "patientId is required");
+            }
+            patient = patientRepository.findById(request.patientId())
                     .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Patient not found"));
         } else {
-            patient = patientService.ensureForUser(actor);
+            if (request.patientId() != null) {
+                patient = patientRepository.findByIdAndOwnerUserId(request.patientId(), actor.getId())
+                        .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Patient not found"));
+            } else {
+                patient = patientService.ensureForUser(actor);
+            }
         }
 
         Consultation c = new Consultation(doctor);
@@ -261,26 +393,51 @@ public class ConsultationController {
     public ConsultationFlowResponse get(Authentication authentication, @PathVariable("id") UUID id) {
         User actor = requireUser(authentication);
 
-        Consultation c = consultationRepository.findById(id)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Consultation not found"));
-
+        Consultation c;
         if (actor.getRole() == UserRole.PATIENT) {
-            Patient p = patientRepository.findByUserId(actor.getId())
-                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN));
-            if (c.getPatient() == null || !p.getId().equals(c.getPatient().getId())) {
-                throw new ResponseStatusException(HttpStatus.FORBIDDEN);
-            }
+            Patient p = patientService.ensureForUser(actor);
+            c = consultationRepository.findByIdAndPatientId(id, p.getId())
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Consultation not found"));
         } else if (actor.getRole() == UserRole.DOCTOR) {
-            Doctor d = doctorRepository.findByUserId(actor.getId())
-                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN));
-            if (c.getDoctor() == null || !d.getId().equals(c.getDoctor().getId())) {
-                throw new ResponseStatusException(HttpStatus.FORBIDDEN);
-            }
+            Doctor d = doctorService.ensureForDoctorUser(actor);
+            c = consultationRepository.findByIdAndDoctorId(id, d.getId())
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Consultation not found"));
         } else {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN);
         }
 
         return ConsultationFlowResponse.from(c, computeAllergyWarning(c));
+    }
+
+    @GetMapping("/{id}/prescription")
+    @Transactional(readOnly = true)
+    public ConsultationPrescriptionResponse getPrescription(Authentication authentication, @PathVariable("id") UUID id) {
+        User actor = requireUser(authentication);
+
+        if (actor.getRole() == UserRole.PATIENT) {
+            Patient p = patientService.ensureForUser(actor);
+            consultationRepository.findByIdAndPatientId(id, p.getId())
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Consultation not found"));
+        } else if (actor.getRole() == UserRole.DOCTOR) {
+            Doctor d = doctorService.ensureForDoctorUser(actor);
+            consultationRepository.findByIdAndDoctorId(id, d.getId())
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Consultation not found"));
+        } else {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN);
+        }
+
+        Prescription p = prescriptionService.getForConsultationAsActor(id);
+        return ConsultationPrescriptionResponse.from(p);
+    }
+
+    @PutMapping("/{id}/prescription")
+    @Transactional
+    public ConsultationPrescriptionResponse putPrescription(Authentication authentication, @PathVariable("id") UUID id, @RequestBody PrescriptionService.CreateRequest request) {
+        User actor = requireUser(authentication);
+        requireDoctor(actor);
+
+        Prescription p = prescriptionService.createOrReplaceForConsultationAsDoctor(id, actor.getId(), request);
+        return ConsultationPrescriptionResponse.from(p);
     }
 
     private String computeAllergyWarning(Consultation c) {

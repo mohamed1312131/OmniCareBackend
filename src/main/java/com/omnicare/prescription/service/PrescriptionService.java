@@ -9,6 +9,8 @@ import com.omnicare.profile.repository.UserRepository;
 import com.omnicare.prescription.model.Prescription;
 import com.omnicare.prescription.model.PrescriptionItem;
 import com.omnicare.prescription.repository.PrescriptionRepository;
+import com.omnicare.doctor.model.Consultation;
+import com.omnicare.doctor.repository.ConsultationRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -27,12 +29,14 @@ public class PrescriptionService {
     private final PatientRepository patientRepository;
     private final MedicationRepository medicationRepository;
     private final UserRepository userRepository;
+    private final ConsultationRepository consultationRepository;
 
-    public PrescriptionService(PrescriptionRepository prescriptionRepository, PatientRepository patientRepository, MedicationRepository medicationRepository, UserRepository userRepository) {
+    public PrescriptionService(PrescriptionRepository prescriptionRepository, PatientRepository patientRepository, MedicationRepository medicationRepository, UserRepository userRepository, ConsultationRepository consultationRepository) {
         this.prescriptionRepository = prescriptionRepository;
         this.patientRepository = patientRepository;
         this.medicationRepository = medicationRepository;
         this.userRepository = userRepository;
+        this.consultationRepository = consultationRepository;
     }
 
     public record CreateItemRequest(
@@ -79,6 +83,59 @@ public class PrescriptionService {
         }
 
         return prescriptionRepository.save(p);
+    }
+
+    @Transactional
+    public Prescription createOrReplaceForConsultationAsDoctor(UUID consultationId, UUID doctorUserId, CreateRequest request) {
+        if (consultationId == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "consultationId is required");
+        }
+
+        Consultation c = consultationRepository.findById(consultationId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Consultation not found"));
+        if (c.getPatient() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Consultation has no patient");
+        }
+
+        User doctor = userRepository.findById(doctorUserId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Doctor not found"));
+
+        Prescription p = prescriptionRepository.findByConsultationId(consultationId)
+                .orElseGet(() -> {
+                    Instant issuedAt = (request == null || request.issuedAt() == null) ? Instant.now() : request.issuedAt();
+                    Prescription created = new Prescription(c.getPatient(), doctor, issuedAt);
+                    created.setConsultation(c);
+                    return created;
+                });
+
+        if (request != null) {
+            if (request.issuedAt() != null) {
+                p.setIssuedAt(request.issuedAt());
+            }
+            if (request.notes() != null) {
+                p.setNotes(request.notes());
+            }
+            if (request.items() != null) {
+                p.clearItems();
+                for (CreateItemRequest it : request.items()) {
+                    p.addItem(toItemOrThrow(it));
+                }
+            }
+        }
+
+        p.setPrescriberUser(doctor);
+        p.setConsultation(c);
+
+        return prescriptionRepository.save(p);
+    }
+
+    @Transactional(readOnly = true)
+    public Prescription getForConsultationAsActor(UUID consultationId) {
+        if (consultationId == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "consultationId is required");
+        }
+        return prescriptionRepository.findByConsultationId(consultationId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Prescription not found"));
     }
 
     @Transactional

@@ -1,6 +1,7 @@
 package com.omnicare.prescription.model;
 
 import com.omnicare.patient.model.Patient;
+import com.omnicare.doctor.model.Consultation;
 import com.omnicare.profile.model.User;
 import jakarta.persistence.*;
 
@@ -24,6 +25,10 @@ public class Prescription {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "prescriber_user_id")
     private User prescriberUser;
+
+    @OneToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "consultation_id", unique = true)
+    private Consultation consultation;
 
     @Column(name = "issued_at", nullable = false)
     private Instant issuedAt;
@@ -64,6 +69,14 @@ public class Prescription {
         this.prescriberUser = prescriberUser;
     }
 
+    public Consultation getConsultation() {
+        return consultation;
+    }
+
+    public void setConsultation(Consultation consultation) {
+        this.consultation = consultation;
+    }
+
     public Instant getIssuedAt() {
         return issuedAt;
     }
@@ -93,7 +106,14 @@ public class Prescription {
     }
 
     public void clearItems() {
-        this.items.clear();
+        if (this.items != null) {
+            for (PrescriptionItem item : this.items) {
+                if (item != null) {
+                    item.setPrescription(null);
+                }
+            }
+            this.items.clear();
+        }
     }
 
     public void addItem(PrescriptionItem item) {

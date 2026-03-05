@@ -14,5 +14,9 @@ public interface ConsultationRepository extends JpaRepository<Consultation, UUID
 
     List<Consultation> findAllByDoctorIdOrderByTimestampDesc(UUID doctorId);
 
+    List<Consultation> findAllByPatientIdOrderByTimestampDesc(UUID patientId);
+
     Optional<Consultation> findByIdAndDoctorId(UUID id, UUID doctorId);
+
+    Optional<Consultation> findByIdAndPatientId(UUID id, UUID patientId);
 }

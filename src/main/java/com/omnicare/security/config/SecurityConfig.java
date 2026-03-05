@@ -106,8 +106,16 @@ public class SecurityConfig {
         DefaultBearerTokenResolver delegate = new DefaultBearerTokenResolver();
         return request -> {
             String path = request.getRequestURI();
-            if (path != null && (path.startsWith("/api/auth/") || path.startsWith("/v1/auth/"))) {
-                return null;
+            if (path != null) {
+                // Do NOT attempt to resolve Bearer tokens for public auth endpoints (login/register/etc.).
+                // However, /api/auth/dev/** endpoints are authenticated in our dev flows, so they must
+                // still accept JWTs.
+                if (path.startsWith("/api/auth/") && !path.startsWith("/api/auth/dev/")) {
+                    return null;
+                }
+                if (path.startsWith("/v1/auth/")) {
+                    return null;
+                }
             }
             return delegate.resolve(request);
         };
