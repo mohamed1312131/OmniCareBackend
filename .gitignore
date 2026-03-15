@@ -39,3 +39,7 @@ application-*.properties
 *.docx
 *.pdf
 ~$*.docx
+
+OmnicareBackend.code-workspace
+*.code-workspace
+

@@ -5,9 +5,11 @@ import com.omnicare.patient.PatientAllergySeverity;
 import com.omnicare.patient.model.Patient;
 import com.omnicare.patient.model.PatientAllergy;
 import com.omnicare.patient.model.PatientType;
+import com.omnicare.patient.repository.PatientRepository;
 import com.omnicare.patient.service.PatientAllergyService;
 import com.omnicare.patient.service.PatientService;
 import com.omnicare.profile.model.User;
+import com.omnicare.profile.model.UserRole;
 import com.omnicare.profile.repository.UserRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
@@ -25,6 +27,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.UUID;
 
 @RestController
@@ -35,12 +38,14 @@ public class PatientController {
     private final FamilyMemberRepository familyMemberRepository;
     private final PatientService patientService;
     private final PatientAllergyService patientAllergyService;
+    private final PatientRepository patientRepository;
 
-    public PatientController(UserRepository userRepository, FamilyMemberRepository familyMemberRepository, PatientService patientService, PatientAllergyService patientAllergyService) {
+    public PatientController(UserRepository userRepository, FamilyMemberRepository familyMemberRepository, PatientService patientService, PatientAllergyService patientAllergyService, PatientRepository patientRepository) {
         this.userRepository = userRepository;
         this.familyMemberRepository = familyMemberRepository;
         this.patientService = patientService;
         this.patientAllergyService = patientAllergyService;
+        this.patientRepository = patientRepository;
     }
 
     public record PatientSummary(UUID patientId, PatientType type, String displayName, UUID userId, UUID familyMemberId) {
@@ -73,6 +78,20 @@ public class PatientController {
                 .forEach(fm -> ensured.add(patientService.ensureForFamilyMember(owner, fm)));
 
         return ensured.stream().map(PatientSummary::from).toList();
+    }
+
+    @GetMapping("/doctor")
+    @Transactional(readOnly = true)
+    public List<PatientSummary> listForDoctor(Authentication authentication) {
+        User actor = requireUser(authentication);
+        if (actor.getRole() != UserRole.DOCTOR) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Doctor role required");
+        }
+
+        List<Patient> all = new ArrayList<>(patientRepository.findAll());
+        all.removeIf(p -> p.getType() == PatientType.USER && p.getUser() != null && p.getUser().getId().equals(actor.getId()));
+        Collections.shuffle(all);
+        return all.stream().limit(50).map(PatientSummary::from).toList();
     }
 
     @GetMapping("/{patientId}/allergies")
@@ -117,6 +136,12 @@ public class PatientController {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Missing email in authenticated principal");
         }
         return email;
+    }
+
+    private User requireUser(Authentication authentication) {
+        String email = requireEmail(authentication);
+        return userRepository.findByEmail(email)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
     }
 
     private static Jwt extractJwt(Authentication authentication) {

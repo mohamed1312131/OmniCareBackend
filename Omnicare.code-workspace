@@ -7,10 +7,7 @@
 			"path": "../OmnicareFrontend"
 		},
 		{
-			"path": "../Omnicaredemo"
+			"path": "../OmnicareDemo"
 		}
-	],
-	"settings": {
-		"java.configuration.updateBuildConfiguration": "automatic"
-	}
+	]
 }

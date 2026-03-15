@@ -74,6 +74,7 @@ public class AccountController {
             String firstName,
             String lastName,
             UserProfileResponse profile,
+            UserRole role,
             BloodGroup bloodGroup,
             Map<String, Object> medicalInfo
     ) {
@@ -87,6 +88,7 @@ public class AccountController {
                     user.getFirstName(),
                     user.getLastName(),
                     profile,
+                    user.getRole(),
                     user.getBloodGroup(),
                     enrichedMedicalInfo
             );
