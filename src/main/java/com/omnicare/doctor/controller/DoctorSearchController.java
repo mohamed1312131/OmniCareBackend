@@ -41,15 +41,18 @@ public class DoctorSearchController {
             boolean isOnline
     ) {
         static DoctorSearchResult from(Doctor d) {
+            if (d == null || d.getProvider() == null || d.getProvider().getUser() == null) {
+                return new DoctorSearchResult(null, null, null, null, null, null, null, false);
+            }
             return new DoctorSearchResult(
                     d.getId(),
-                    d.getUser().getId(),
-                    d.getUser().getName(),
+                    d.getProvider().getUser().getId(),
+                    d.getProvider().getUser().getName(),
                     d.getSpecialty(),
                     d.getExperienceYears(),
-                    d.getRating(),
-                    d.getServiceRadiusKm(),
-                    d.isOnline()
+                    d.getProvider().getRating(),
+                    d.getProvider().getServiceRadiusKm(),
+                    d.getProvider().isOnline()
             );
         }
     }

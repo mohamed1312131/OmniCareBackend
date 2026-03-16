@@ -6,18 +6,20 @@ import com.omnicare.document.MedicalDocumentRepository;
 import com.omnicare.document.MedicalDocumentType;
 import com.omnicare.family.FamilyMember;
 import com.omnicare.family.FamilyMemberRepository;
+import com.omnicare.medication.Medication;
+import com.omnicare.medication.MedicationRepository;
 import com.omnicare.passport.BloodGroup;
 import com.omnicare.passport.MedicalInfoValidator;
 import com.omnicare.profile.model.User;
 import com.omnicare.profile.model.UserRole;
 import com.omnicare.profile.repository.UserRepository;
-import com.omnicare.medication.Medication;
-import com.omnicare.medication.MedicationRepository;
+import com.omnicare.provider.model.Provider;
+import com.omnicare.provider.service.ProviderService;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -46,14 +48,16 @@ public class AccountController {
     private final FamilyMemberRepository familyMemberRepository;
     private final MedicalDocumentRepository medicalDocumentRepository;
     private final MedicationRepository medicationRepository;
+    private final ProviderService providerService;
 
-    public AccountController(UserRepository userRepository, PasswordEncoder passwordEncoder, MedicalInfoValidator medicalInfoValidator, FamilyMemberRepository familyMemberRepository, MedicalDocumentRepository medicalDocumentRepository, MedicationRepository medicationRepository) {
+    public AccountController(UserRepository userRepository, PasswordEncoder passwordEncoder, MedicalInfoValidator medicalInfoValidator, FamilyMemberRepository familyMemberRepository, MedicalDocumentRepository medicalDocumentRepository, MedicationRepository medicationRepository, ProviderService providerService) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.medicalInfoValidator = medicalInfoValidator;
         this.familyMemberRepository = familyMemberRepository;
         this.medicalDocumentRepository = medicalDocumentRepository;
         this.medicationRepository = medicationRepository;
+        this.providerService = providerService;
     }
 
     public record SetPasswordRequest(String password) {
@@ -73,109 +77,42 @@ public class AccountController {
             String name,
             String firstName,
             String lastName,
+            String phoneNumber,
+            LocalDate dateOfBirth,
+            String gender,
             UserProfileResponse profile,
             UserRole role,
+            UUID providerId,
+            String providerType,
             BloodGroup bloodGroup,
             Map<String, Object> medicalInfo
     ) {
-        public static MedicalPassportResponse from(User user, MedicationRepository medicationRepository) {
+        public static MedicalPassportResponse from(User user, MedicationRepository medicationRepository, ProviderService providerService) {
             UserProfileResponse profile = new UserProfileResponse(user.getFirstName(), user.getLastName(), null);
 
-            Map<String, Object> enrichedMedicalInfo = enrichMedicalInfo(user.getMedicalInfo(), medicationRepository);
+            UUID providerId = null;
+            String providerType = null;
+            if (ProviderService.isProfessionalRole(user.getRole()) && user.getRole() != UserRole.ADMIN && providerService != null) {
+                Provider provider = providerService.ensureForProfessionalUser(user);
+                providerId = provider.getId();
+                providerType = provider.getType() == null ? null : provider.getType().name();
+            }
+
             return new MedicalPassportResponse(
                     user.getEmail(),
                     user.getName(),
                     user.getFirstName(),
                     user.getLastName(),
+                    user.getPhoneNumber(),
+                    user.getDateOfBirth(),
+                    user.getGender(),
                     profile,
                     user.getRole(),
+                    providerId,
+                    providerType,
                     user.getBloodGroup(),
-                    enrichedMedicalInfo
+                    user.getMedicalInfo()
             );
-        }
-
-        private static Map<String, Object> enrichMedicalInfo(Map<String, Object> medicalInfo, MedicationRepository medicationRepository) {
-            if (medicalInfo == null || medicalInfo.isEmpty() || medicationRepository == null) {
-                return medicalInfo;
-            }
-
-            Object current = medicalInfo.get("currentMedications");
-            if (!(current instanceof List<?> list) || list.isEmpty()) {
-                return medicalInfo;
-            }
-
-            List<UUID> ids = new ArrayList<>();
-            List<Map<String, Object>> items = new ArrayList<>();
-
-            for (Object item : list) {
-                if (!(item instanceof Map<?, ?> rawMap)) {
-                    continue;
-                }
-                Map<String, Object> map = new HashMap<>();
-                for (Map.Entry<?, ?> e : rawMap.entrySet()) {
-                    if (e.getKey() != null) {
-                        map.put(String.valueOf(e.getKey()), (Object) e.getValue());
-                    }
-                }
-                Object idRaw = map.get("medicationId");
-                if (idRaw != null) {
-                    try {
-                        UUID id = UUID.fromString(String.valueOf(idRaw));
-                        ids.add(id);
-                    } catch (Exception ignored) {
-                        // keep as-is
-                    }
-                }
-                items.add(map);
-            }
-
-            if (ids.isEmpty()) {
-                return medicalInfo;
-            }
-
-            Map<UUID, Medication> byId = new HashMap<>();
-            for (Medication m : medicationRepository.findAllById(ids)) {
-                if (m != null && m.getId() != null) {
-                    byId.put(m.getId(), m);
-                }
-            }
-
-            List<Map<String, Object>> enriched = new ArrayList<>();
-            for (Map<String, Object> item : items) {
-                Map<String, Object> next = new HashMap<>(item);
-
-                UUID id = null;
-                Object idRaw = item.get("medicationId");
-                if (idRaw != null) {
-                    try {
-                        id = UUID.fromString(String.valueOf(idRaw));
-                    } catch (Exception ignored) {
-                        // keep null
-                    }
-                }
-
-                Medication m = id != null ? byId.get(id) : null;
-                if (m != null) {
-                    next.put("name", Objects.toString(m.getName(), ""));
-                    next.put("catalogDosage", m.getDosage());
-                    next.put("form", m.getForm());
-                    next.put("dci", m.getDci());
-                    next.put("type", m.getType());
-                    next.put("soluble", isSoluble(m.getForm()));
-                }
-
-                enriched.add(next);
-            }
-
-            Map<String, Object> copy = new HashMap<>(medicalInfo);
-            copy.put("currentMedications", enriched);
-            return copy;
-        }
-
-        private static boolean isSoluble(String form) {
-            if (form == null) return false;
-            String f = form.toLowerCase();
-            return f.contains("soluble") || f.contains("efferves") || f.contains("orodispers") || f.contains("dispers");
         }
     }
 
@@ -226,12 +163,22 @@ public class AccountController {
             }
             if (request.medicalInfo() != null) {
                 medicalInfoValidator.validateOrThrow(request.medicalInfo());
-                user.setMedicalInfo(request.medicalInfo());
+                user.setMedicalInfo(sanitizeMedicalInfo(request.medicalInfo()));
             }
         }
 
         userRepository.save(user);
-        return MedicalPassportResponse.from(user, medicationRepository);
+        return MedicalPassportResponse.from(user, medicationRepository, providerService);
+    }
+
+    private static Map<String, Object> sanitizeMedicalInfo(Map<String, Object> medicalInfo) {
+        if (medicalInfo == null) {
+            return null;
+        }
+        Map<String, Object> copy = new HashMap<>(medicalInfo);
+        copy.remove("currentMedications");
+        copy.remove("chronicConditions");
+        return copy;
     }
 
     @GetMapping("/full-profile")
@@ -247,7 +194,7 @@ public class AccountController {
                 .map(MedicalDocumentResponse::from)
                 .toList();
 
-        return ApiResponse.success(new FullProfileResponse(MedicalPassportResponse.from(user, medicationRepository), family, documents));
+        return ApiResponse.success(new FullProfileResponse(MedicalPassportResponse.from(user, medicationRepository, providerService), family, documents));
     }
 
     @PostMapping("/password")

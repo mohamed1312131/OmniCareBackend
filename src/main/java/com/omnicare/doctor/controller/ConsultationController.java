@@ -8,9 +8,18 @@ import com.omnicare.patient.service.PatientService;
 import com.omnicare.doctor.repository.DoctorRepository;
 import com.omnicare.doctor.repository.ConsultationRepository;
 import com.omnicare.doctor.model.Consultation;
+import com.omnicare.doctor.model.ConsultationCancellationReason;
 import com.omnicare.doctor.model.ConsultationStatus;
 import com.omnicare.doctor.model.Doctor;
 import com.omnicare.doctor.service.DoctorService;
+import com.omnicare.provider.model.Provider;
+import com.omnicare.provider.model.ProviderType;
+import com.omnicare.provider.service.ProviderService;
+import com.omnicare.access.service.PatientAccessService;
+import com.omnicare.access.service.PatientAccessService.Scope;
+import com.omnicare.audit.model.AuditEntityType;
+import com.omnicare.audit.model.AuditLogAction;
+import com.omnicare.audit.service.AuditLogService;
 import com.omnicare.prescription.service.PrescriptionService;
 import com.omnicare.prescription.model.Prescription;
 import com.omnicare.prescription.model.PrescriptionItem;
@@ -39,31 +48,40 @@ public class ConsultationController {
 
     private final UserRepository userRepository;
     private final DoctorService doctorService;
+    private final ProviderService providerService;
     private final DoctorRepository doctorRepository;
     private final ConsultationRepository consultationRepository;
     private final PatientService patientService;
     private final PatientRepository patientRepository;
     private final PatientAllergyRepository patientAllergyRepository;
     private final PrescriptionService prescriptionService;
+    private final PatientAccessService patientAccessService;
+    private final AuditLogService auditLogService;
 
     public ConsultationController(
             UserRepository userRepository,
             DoctorService doctorService,
+            ProviderService providerService,
             DoctorRepository doctorRepository,
             ConsultationRepository consultationRepository,
             PatientService patientService,
             PatientRepository patientRepository,
             PatientAllergyRepository patientAllergyRepository,
-            PrescriptionService prescriptionService
+            PrescriptionService prescriptionService,
+            PatientAccessService patientAccessService,
+            AuditLogService auditLogService
     ) {
         this.userRepository = userRepository;
         this.doctorService = doctorService;
+        this.providerService = providerService;
         this.doctorRepository = doctorRepository;
         this.consultationRepository = consultationRepository;
         this.patientService = patientService;
         this.patientRepository = patientRepository;
         this.patientAllergyRepository = patientAllergyRepository;
         this.prescriptionService = prescriptionService;
+        this.patientAccessService = patientAccessService;
+        this.auditLogService = auditLogService;
     }
 
     @GetMapping
@@ -71,12 +89,21 @@ public class ConsultationController {
     public List<ConsultationFlowResponse> list(Authentication authentication, @RequestParam(value = "status", required = false) ConsultationStatus status) {
         User actor = requireUser(authentication);
 
-        if (actor.getRole() == UserRole.DOCTOR) {
-            Doctor doctor = doctorService.ensureForDoctorUser(actor);
+        if (ProviderService.isProfessionalRole(actor.getRole()) && actor.getRole() != UserRole.ADMIN) {
+            Provider provider = providerService.ensureForProfessionalUser(actor);
             List<Consultation> rows = (status == null)
-                    ? consultationRepository.findAllByDoctorIdOrderByTimestampDesc(doctor.getId())
-                    : consultationRepository.findAllByDoctorIdAndStatusOrderByTimestampDesc(doctor.getId(), status);
-            return rows.stream().map(c -> ConsultationFlowResponse.from(c, computeAllergyWarning(c))).toList();
+                    ? consultationRepository.findAllByProviderIdOrderByTimestampDesc(provider.getId())
+                    : consultationRepository.findAllByProviderIdAndStatusOrderByTimestampDesc(provider.getId(), status);
+            return rows.stream()
+                    .filter(c -> {
+                        if (c == null || c.getPatient() == null || c.getPatient().getId() == null) {
+                            return false;
+                        }
+                        patientAccessService.requireProviderAccess(actor, c.getPatient().getId(), Scope.CONSULTATIONS_READ);
+                        return true;
+                    })
+                    .map(c -> ConsultationFlowResponse.from(c, computeAllergyWarning(c)))
+                    .toList();
         }
 
         if (actor.getRole() == UserRole.PATIENT) {
@@ -93,6 +120,7 @@ public class ConsultationController {
 
     public record CreateConsultationRequest(
             UUID doctorId,
+            UUID providerId,
             UUID patientId,
             String symptoms,
             Integer painLevel,
@@ -107,7 +135,7 @@ public class ConsultationController {
     ) {
     }
 
-    public record PatchConsultationRequest(ConsultationStatus status, String diagnosis, String treatment) {
+    public record PatchConsultationRequest(ConsultationStatus status, ConsultationCancellationReason cancellationReason, String diagnosis, String treatment) {
     }
 
     public record ConsultationFlowResponse(
@@ -115,12 +143,17 @@ public class ConsultationController {
             UUID doctorId,
             String doctorName,
             String doctorSpecialty,
+            UUID providerId,
+            String providerType,
             UUID patientId,
             String patientName,
             String symptoms,
             String diagnosis,
             String treatment,
             ConsultationStatus status,
+            ConsultationCancellationReason cancellationReason,
+            Instant cancelledAt,
+            UUID cancelledByUserId,
             Integer painLevel,
             List<String> affectedAreas,
             String streetAddress,
@@ -134,15 +167,24 @@ public class ConsultationController {
             Instant timestamp,
             String allergyWarning
     ) {
-        static ConsultationFlowResponse from(Consultation c, String allergyWarning) {
+        public static ConsultationFlowResponse from(Consultation c, String allergyWarning) {
             List<String> affectedAreas = c.getAffectedAreas() == null ? List.of() : List.copyOf(c.getAffectedAreas());
 
             String doctorName = null;
             String doctorSpecialty = null;
             if (c.getDoctor() != null) {
                 doctorSpecialty = c.getDoctor().getSpecialty();
-                if (c.getDoctor().getUser() != null) {
-                    doctorName = c.getDoctor().getUser().getName();
+                if (c.getDoctor().getProvider() != null && c.getDoctor().getProvider().getUser() != null) {
+                    doctorName = c.getDoctor().getProvider().getUser().getName();
+                }
+            }
+
+            UUID providerId = null;
+            String providerType = null;
+            if (c.getProvider() != null) {
+                providerId = c.getProvider().getId();
+                if (c.getProvider().getType() != null) {
+                    providerType = c.getProvider().getType().name();
                 }
             }
 
@@ -155,17 +197,33 @@ public class ConsultationController {
                 }
             }
 
+            ConsultationCancellationReason cancellationReason = null;
+            Instant cancelledAt = null;
+            UUID cancelledByUserId = null;
+            if (c != null) {
+                cancellationReason = c.getCancellationReason();
+                cancelledAt = c.getCancelledAt();
+                if (c.getCancelledByUser() != null) {
+                    cancelledByUserId = c.getCancelledByUser().getId();
+                }
+            }
+
             return new ConsultationFlowResponse(
                     c.getId(),
                     c.getDoctor() == null ? null : c.getDoctor().getId(),
                     doctorName,
                     doctorSpecialty,
+                    providerId,
+                    providerType,
                     c.getPatient() == null ? null : c.getPatient().getId(),
                     patientName,
                     c.getSymptoms(),
                     c.getDiagnosis(),
                     c.getTreatment(),
                     c.getStatus(),
+                    cancellationReason,
+                    cancelledAt,
+                    cancelledByUserId,
                     c.getPainLevel(),
                     affectedAreas,
                     c.getStreetAddress(),
@@ -242,13 +300,14 @@ public class ConsultationController {
         User actor = requireUser(authentication);
 
         final boolean isDoctorActor = actor.getRole() == UserRole.DOCTOR;
+        final boolean isProfessionalActor = ProviderService.isProfessionalRole(actor.getRole()) && actor.getRole() != UserRole.ADMIN;
         final boolean isPatientActor = actor.getRole() == UserRole.PATIENT;
-        if (!isDoctorActor && !isPatientActor) {
+        if (!isProfessionalActor && !isPatientActor) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN);
         }
 
-        if (request == null || request.doctorId() == null) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "doctorId is required");
+        if (request == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "request is required");
         }
         if (request.symptoms() == null || request.symptoms().isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "symptoms is required");
@@ -258,25 +317,44 @@ public class ConsultationController {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "painLevel must be between 1 and 10");
         }
 
-        Doctor doctor;
-        if (isDoctorActor) {
-            Doctor actorDoctor = doctorService.ensureForDoctorUser(actor);
-            if (request.doctorId() != null && !request.doctorId().equals(actorDoctor.getId())) {
-                throw new ResponseStatusException(HttpStatus.FORBIDDEN, "doctorId must match authenticated doctor");
+        Provider provider;
+        Doctor doctor = null;
+
+        if (isProfessionalActor) {
+            Provider actorProvider = providerService.ensureForProfessionalUser(actor);
+            if (request.providerId() != null && !request.providerId().equals(actorProvider.getId())) {
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN, "providerId must match authenticated provider");
             }
-            doctor = actorDoctor;
+            provider = actorProvider;
+            if (isDoctorActor) {
+                doctor = doctorService.ensureForDoctorUser(actor);
+            }
         } else {
-            doctor = doctorRepository.findById(request.doctorId())
-                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Doctor not found"));
+            // patient actor chooses a provider (preferred) or a doctor (legacy)
+            if (request.providerId() != null) {
+                provider = providerService.requireById(request.providerId());
+            } else if (request.doctorId() != null) {
+                Doctor chosen = doctorRepository.findById(request.doctorId())
+                        .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Doctor not found"));
+                doctor = chosen;
+                if (chosen.getProvider() == null || chosen.getProvider().getUser() == null) {
+                    throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Doctor provider user missing");
+                }
+                provider = providerService.ensureForProfessionalUser(chosen.getProvider().getUser());
+            } else {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "providerId or doctorId is required");
+            }
         }
 
         Patient patient;
-        if (isDoctorActor) {
+        if (isProfessionalActor) {
             if (request.patientId() == null) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "patientId is required");
             }
             patient = patientRepository.findById(request.patientId())
                     .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Patient not found"));
+
+            patientAccessService.requireProviderAccess(actor, patient.getId(), Scope.CONSULTATIONS_WRITE);
         } else {
             if (request.patientId() != null) {
                 patient = patientRepository.findByIdAndOwnerUserId(request.patientId(), actor.getId())
@@ -286,7 +364,9 @@ public class ConsultationController {
             }
         }
 
-        Consultation c = new Consultation(doctor);
+        Consultation c = new Consultation();
+        c.setDoctor(doctor);
+        c.setProvider(provider);
         c.setPatient(patient);
         c.setSymptoms(request.symptoms().trim());
         c.setStatus(ConsultationStatus.PENDING);
@@ -326,6 +406,11 @@ public class ConsultationController {
 
         c.setTimestamp(Instant.now());
 
+        // patient initiating consultation grants provider access (revocable by both parties)
+        if (isPatientActor) {
+            patientAccessService.grantAccessFromPatientToProvider(actor, patient.getId(), provider.getId());
+        }
+
         Consultation saved = consultationRepository.save(c);
         return ConsultationFlowResponse.from(saved, null);
     }
@@ -334,16 +419,32 @@ public class ConsultationController {
     @Transactional
     public ConsultationFlowResponse patch(Authentication authentication, @PathVariable("id") UUID id, @RequestBody PatchConsultationRequest request) {
         User actor = requireUser(authentication);
-        requireDoctor(actor);
 
-        Doctor doctor = doctorService.ensureForDoctorUser(actor);
+        if (!ProviderService.isProfessionalRole(actor.getRole()) || actor.getRole() == UserRole.ADMIN) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Professional role required");
+        }
 
-        Consultation c = consultationRepository.findByIdAndDoctorId(id, doctor.getId())
+        Provider provider = providerService.ensureForProfessionalUser(actor);
+
+        Consultation c = consultationRepository.findByIdAndProviderId(id, provider.getId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Consultation not found"));
+
+        if (c.getPatient() == null || c.getPatient().getId() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Consultation patient missing");
+        }
+        patientAccessService.requireProviderAccess(actor, c.getPatient().getId(), Scope.CONSULTATIONS_WRITE);
 
         if (request != null) {
             if (request.status() != null) {
                 c.setStatus(request.status());
+            }
+            if (request.status() == ConsultationStatus.CANCELLED) {
+                if (request.cancellationReason() != null) {
+                    c.setCancellationReason(request.cancellationReason());
+                }
+                c.setCancelledAt(Instant.now());
+                c.setCancelledByUser(actor);
+                auditLogService.log(actor, AuditEntityType.CONSULTATION, c.getId(), AuditLogAction.CANCEL, request.cancellationReason() == null ? null : request.cancellationReason().name());
             }
             if (request.diagnosis() != null) {
                 String trimmed = request.diagnosis().trim();
@@ -364,12 +465,20 @@ public class ConsultationController {
     @Transactional
     public ConsultationFlowResponse complete(Authentication authentication, @PathVariable("id") UUID id, @RequestBody PatchConsultationRequest request) {
         User actor = requireUser(authentication);
-        requireDoctor(actor);
 
-        Doctor doctor = doctorService.ensureForDoctorUser(actor);
+        if (!ProviderService.isProfessionalRole(actor.getRole()) || actor.getRole() == UserRole.ADMIN) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Professional role required");
+        }
 
-        Consultation c = consultationRepository.findByIdAndDoctorId(id, doctor.getId())
+        Provider provider = providerService.ensureForProfessionalUser(actor);
+
+        Consultation c = consultationRepository.findByIdAndProviderId(id, provider.getId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Consultation not found"));
+
+        if (c.getPatient() == null || c.getPatient().getId() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Consultation patient missing");
+        }
+        patientAccessService.requireProviderAccess(actor, c.getPatient().getId(), Scope.CONSULTATIONS_WRITE);
 
         c.setStatus(ConsultationStatus.COMPLETED);
         if (request != null) {
@@ -398,10 +507,15 @@ public class ConsultationController {
             Patient p = patientService.ensureForUser(actor);
             c = consultationRepository.findByIdAndPatientId(id, p.getId())
                     .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Consultation not found"));
-        } else if (actor.getRole() == UserRole.DOCTOR) {
-            Doctor d = doctorService.ensureForDoctorUser(actor);
-            c = consultationRepository.findByIdAndDoctorId(id, d.getId())
+        } else if (ProviderService.isProfessionalRole(actor.getRole()) && actor.getRole() != UserRole.ADMIN) {
+            Provider provider = providerService.ensureForProfessionalUser(actor);
+            c = consultationRepository.findByIdAndProviderId(id, provider.getId())
                     .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Consultation not found"));
+
+            if (c.getPatient() == null || c.getPatient().getId() == null) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Consultation patient missing");
+            }
+            patientAccessService.requireProviderAccess(actor, c.getPatient().getId(), Scope.CONSULTATIONS_READ);
         } else {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN);
         }
@@ -418,10 +532,15 @@ public class ConsultationController {
             Patient p = patientService.ensureForUser(actor);
             consultationRepository.findByIdAndPatientId(id, p.getId())
                     .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Consultation not found"));
-        } else if (actor.getRole() == UserRole.DOCTOR) {
-            Doctor d = doctorService.ensureForDoctorUser(actor);
-            consultationRepository.findByIdAndDoctorId(id, d.getId())
+        } else if (ProviderService.isProfessionalRole(actor.getRole()) && actor.getRole() != UserRole.ADMIN) {
+            Provider provider = providerService.ensureForProfessionalUser(actor);
+            Consultation c = consultationRepository.findByIdAndProviderId(id, provider.getId())
                     .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Consultation not found"));
+
+            if (c.getPatient() == null || c.getPatient().getId() == null) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Consultation patient missing");
+            }
+            patientAccessService.requireProviderAccess(actor, c.getPatient().getId(), Scope.CONSULTATIONS_READ);
         } else {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN);
         }
@@ -434,7 +553,22 @@ public class ConsultationController {
     @Transactional
     public ConsultationPrescriptionResponse putPrescription(Authentication authentication, @PathVariable("id") UUID id, @RequestBody PrescriptionService.CreateRequest request) {
         User actor = requireUser(authentication);
-        requireDoctor(actor);
+        if (!ProviderService.isProfessionalRole(actor.getRole()) || actor.getRole() == UserRole.ADMIN) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Professional role required");
+        }
+
+        Provider provider = providerService.ensureForProfessionalUser(actor);
+        ProviderType type = provider.getType();
+        if (type != ProviderType.DOCTOR && type != ProviderType.PSYCHIATRIST) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Prescriber role required");
+        }
+
+        Consultation c = consultationRepository.findByIdAndProviderId(id, provider.getId())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Consultation not found"));
+        if (c.getPatient() == null || c.getPatient().getId() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Consultation patient missing");
+        }
+        patientAccessService.requireProviderAccess(actor, c.getPatient().getId(), Scope.CONSULTATIONS_WRITE);
 
         Prescription p = prescriptionService.createOrReplaceForConsultationAsDoctor(id, actor.getId(), request);
         return ConsultationPrescriptionResponse.from(p);
@@ -480,12 +614,6 @@ public class ConsultationController {
 
         return userRepository.findByEmail(email)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
-    }
-
-    private static void requireDoctor(User user) {
-        if (user.getRole() != UserRole.DOCTOR) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Doctor role required");
-        }
     }
 
     private static void requirePatient(User user) {

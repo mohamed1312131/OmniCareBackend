@@ -3,10 +3,15 @@ package com.omnicare.auth.controller;
 import com.omnicare.auth.service.PhoneOtpVerificationService;
 import com.omnicare.doctor.model.Doctor;
 import com.omnicare.doctor.repository.DoctorRepository;
+import com.omnicare.passport.BloodGroup;
+import com.omnicare.patient.service.PatientService;
 import com.omnicare.profile.model.RegistrationStatus;
-import com.omnicare.profile.model.UserRole;
 import com.omnicare.profile.model.User;
+import com.omnicare.profile.model.UserRole;
 import com.omnicare.profile.repository.UserRepository;
+import com.omnicare.provider.model.Provider;
+import com.omnicare.provider.repository.ProviderRepository;
+import com.omnicare.provider.service.ProviderService;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -23,7 +28,10 @@ import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandl
 import org.springframework.web.server.ResponseStatusException;
 
 import java.util.Comparator;
+import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 @RestController
@@ -34,29 +42,85 @@ public class DevAuthController {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final DoctorRepository doctorRepository;
+    private final ProviderRepository providerRepository;
     private final PhoneOtpVerificationService phoneOtpVerificationService;
+    private final PatientService patientService;
+    private final ProviderService providerService;
 
-    public DevAuthController(RequestMappingHandlerMapping handlerMapping, UserRepository userRepository, PasswordEncoder passwordEncoder, DoctorRepository doctorRepository, PhoneOtpVerificationService phoneOtpVerificationService) {
+    public DevAuthController(RequestMappingHandlerMapping handlerMapping, UserRepository userRepository, PasswordEncoder passwordEncoder, DoctorRepository doctorRepository, ProviderRepository providerRepository, PhoneOtpVerificationService phoneOtpVerificationService, PatientService patientService, ProviderService providerService) {
         this.handlerMapping = handlerMapping;
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.doctorRepository = doctorRepository;
+        this.providerRepository = providerRepository;
         this.phoneOtpVerificationService = phoneOtpVerificationService;
+        this.patientService = patientService;
+        this.providerService = providerService;
     }
 
-    public record CreateDoctorRequest(String email, String name, String password) {
+    public record CreateDoctorRequest(
+            String email,
+            String password,
+            String name,
+            String firstName,
+            String lastName,
+            String phoneNumber,
+            LocalDate dateOfBirth,
+            String gender,
+            String specialty,
+            Integer yearsExperience,
+            Integer serviceRadiusKm,
+            Integer totalReviews,
+            BigDecimal rating,
+            Boolean isOnline,
+            String medicalLicenseNumber
+    ) {
     }
 
     public record CreateDoctorResponse(String message) {
     }
 
-    public record CreatePatientRequest(String email, String name, String password) {
+    public record CreateProfessionalRequest(
+            String email,
+            String password,
+            String name,
+            UserRole role,
+            String firstName,
+            String lastName,
+            String phoneNumber,
+            LocalDate dateOfBirth,
+            String gender,
+            String specialty,
+            Integer yearsExperience,
+            Integer serviceRadiusKm,
+            Integer totalReviews,
+            BigDecimal rating,
+            Boolean isOnline,
+            String medicalLicenseNumber
+    ) {
+    }
+
+    public record CreateProfessionalResponse(String message) {
+    }
+
+    public record CreatePatientRequest(
+            String email,
+            String password,
+            String name,
+            String firstName,
+            String lastName,
+            String phoneNumber,
+            LocalDate dateOfBirth,
+            String gender,
+            BloodGroup bloodGroup,
+            Map<String, Object> medicalInfo
+    ) {
     }
 
     public record CreatePatientResponse(String message) {
     }
 
-    public record CreateAdminRequest(String email, String name, String password) {
+    public record CreateAdminRequest(String email, String password, String name) {
     }
 
     public record CreateAdminResponse(String message) {
@@ -93,13 +157,134 @@ public class DevAuthController {
         user.setRegistrationStatus(RegistrationStatus.ACTIVE);
         user.setEmailVerified(true);
         user.setPasswordHash(passwordEncoder.encode(request.password()));
-        userRepository.save(user);
 
-        if (doctorRepository.findByUserId(user.getId()).isEmpty()) {
-            doctorRepository.save(new Doctor(user));
+        if (request.firstName() != null && !request.firstName().isBlank()) {
+            user.setFirstName(request.firstName().trim());
+        }
+        if (request.lastName() != null && !request.lastName().isBlank()) {
+            user.setLastName(request.lastName().trim());
+        }
+        if (request.phoneNumber() != null && !request.phoneNumber().isBlank()) {
+            user.setPhoneNumber(request.phoneNumber().trim());
+            user.setPhoneVerified(false);
+        }
+        if (request.dateOfBirth() != null) {
+            user.setDateOfBirth(request.dateOfBirth());
+        }
+        if (request.gender() != null && !request.gender().isBlank()) {
+            user.setGender(request.gender().trim());
         }
 
+        userRepository.save(user);
+
+        Provider provider = providerService.ensureForProfessionalUser(user);
+        if (request.serviceRadiusKm() != null) {
+            provider.setServiceRadiusKm(request.serviceRadiusKm());
+        }
+        if (request.totalReviews() != null) {
+            provider.setTotalReviews(request.totalReviews());
+        }
+        if (request.rating() != null) {
+            provider.setRating(request.rating());
+        }
+        if (request.isOnline() != null) {
+            provider.setOnline(request.isOnline());
+        }
+
+        Doctor doctor = doctorRepository.findByProviderId(provider.getId()).orElseGet(() -> doctorRepository.save(new Doctor(provider)));
+        if (request.specialty() != null && !request.specialty().isBlank()) {
+            doctor.setSpecialty(request.specialty().trim());
+        }
+        if (request.yearsExperience() != null) {
+            doctor.setExperienceYears(request.yearsExperience());
+        }
+        if (request.medicalLicenseNumber() != null && !request.medicalLicenseNumber().isBlank()) {
+            doctor.setMedicalLicenseNumber(request.medicalLicenseNumber().trim());
+        }
+
+        providerRepository.save(provider);
+        doctorRepository.save(doctor);
+
         return new CreateDoctorResponse("Doctor created and verified");
+    }
+
+    @PostMapping(value = "/create-professional")
+    @Transactional
+    public CreateProfessionalResponse createProfessional(@RequestBody CreateProfessionalRequest request) {
+        if (request == null || request.email() == null || request.email().isBlank() || request.password() == null || request.password().isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "email and password are required");
+        }
+        if (request.role() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "role is required");
+        }
+
+        UserRole role = request.role();
+        if (!com.omnicare.provider.service.ProviderService.isProfessionalRole(role) || role == UserRole.ADMIN || role == UserRole.PATIENT) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unsupported professional role");
+        }
+
+        String email = request.email().trim().toLowerCase();
+        String resolvedName = (request.name() == null || request.name().isBlank()) ? email : request.name().trim();
+
+        if (userRepository.findByEmail(email).isPresent()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Email already exists");
+        }
+
+        User user = new User(email, resolvedName);
+        user.setRole(role);
+        user.setRegistrationStatus(RegistrationStatus.ACTIVE);
+        user.setEmailVerified(true);
+        user.setPasswordHash(passwordEncoder.encode(request.password()));
+
+        if (request.firstName() != null && !request.firstName().isBlank()) {
+            user.setFirstName(request.firstName().trim());
+        }
+        if (request.lastName() != null && !request.lastName().isBlank()) {
+            user.setLastName(request.lastName().trim());
+        }
+        if (request.phoneNumber() != null && !request.phoneNumber().isBlank()) {
+            user.setPhoneNumber(request.phoneNumber().trim());
+            user.setPhoneVerified(false);
+        }
+        if (request.dateOfBirth() != null) {
+            user.setDateOfBirth(request.dateOfBirth());
+        }
+        if (request.gender() != null && !request.gender().isBlank()) {
+            user.setGender(request.gender().trim());
+        }
+
+        userRepository.save(user);
+
+        Provider provider = providerService.ensureForProfessionalUser(user);
+        if (request.serviceRadiusKm() != null) {
+            provider.setServiceRadiusKm(request.serviceRadiusKm());
+        }
+        if (request.totalReviews() != null) {
+            provider.setTotalReviews(request.totalReviews());
+        }
+        if (request.rating() != null) {
+            provider.setRating(request.rating());
+        }
+        if (request.isOnline() != null) {
+            provider.setOnline(request.isOnline());
+        }
+        providerRepository.save(provider);
+
+        if (role == UserRole.DOCTOR) {
+            Doctor doctor = doctorRepository.findByProviderId(provider.getId()).orElseGet(() -> doctorRepository.save(new Doctor(provider)));
+            if (request.specialty() != null && !request.specialty().isBlank()) {
+                doctor.setSpecialty(request.specialty().trim());
+            }
+            if (request.yearsExperience() != null) {
+                doctor.setExperienceYears(request.yearsExperience());
+            }
+            if (request.medicalLicenseNumber() != null && !request.medicalLicenseNumber().isBlank()) {
+                doctor.setMedicalLicenseNumber(request.medicalLicenseNumber().trim());
+            }
+            doctorRepository.save(doctor);
+        }
+
+        return new CreateProfessionalResponse("Professional created and verified");
     }
 
     @PostMapping(value = "/create-patient")
@@ -121,7 +306,33 @@ public class DevAuthController {
         user.setRegistrationStatus(RegistrationStatus.ACTIVE);
         user.setEmailVerified(true);
         user.setPasswordHash(passwordEncoder.encode(request.password()));
+
+        if (request.firstName() != null && !request.firstName().isBlank()) {
+            user.setFirstName(request.firstName().trim());
+        }
+        if (request.lastName() != null && !request.lastName().isBlank()) {
+            user.setLastName(request.lastName().trim());
+        }
+        if (request.phoneNumber() != null && !request.phoneNumber().isBlank()) {
+            user.setPhoneNumber(request.phoneNumber().trim());
+            user.setPhoneVerified(false);
+        }
+        if (request.dateOfBirth() != null) {
+            user.setDateOfBirth(request.dateOfBirth());
+        }
+        if (request.gender() != null && !request.gender().isBlank()) {
+            user.setGender(request.gender().trim());
+        }
+        if (request.bloodGroup() != null) {
+            user.setBloodGroup(request.bloodGroup());
+        }
+        if (request.medicalInfo() != null) {
+            user.setMedicalInfo(request.medicalInfo());
+        }
+
         userRepository.save(user);
+
+        patientService.ensureForUser(user);
 
         return new CreatePatientResponse("Patient created and verified");
     }

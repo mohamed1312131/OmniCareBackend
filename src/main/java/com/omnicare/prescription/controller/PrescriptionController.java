@@ -7,6 +7,9 @@ import com.omnicare.prescription.model.Prescription;
 import com.omnicare.prescription.model.PrescriptionItem;
 import com.omnicare.prescription.model.PrescriptionStatus;
 import com.omnicare.prescription.service.PrescriptionService;
+import com.omnicare.provider.model.Provider;
+import com.omnicare.provider.model.ProviderType;
+import com.omnicare.provider.service.ProviderService;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
@@ -28,10 +31,12 @@ public class PrescriptionController {
 
     private final PrescriptionService prescriptionService;
     private final UserRepository userRepository;
+    private final ProviderService providerService;
 
-    public PrescriptionController(PrescriptionService prescriptionService, UserRepository userRepository) {
+    public PrescriptionController(PrescriptionService prescriptionService, UserRepository userRepository, ProviderService providerService) {
         this.prescriptionService = prescriptionService;
         this.userRepository = userRepository;
+        this.providerService = providerService;
     }
 
     public record ItemResponse(
@@ -88,7 +93,7 @@ public class PrescriptionController {
     @PostMapping
     public PrescriptionResponse create(Authentication authentication, @RequestBody PrescriptionService.CreateRequest request) {
         User actor = requireUser(authentication);
-        requireDoctor(actor);
+        requireDoctorOrPsychiatristProvider(actor);
         Prescription created = prescriptionService.createAsDoctor(actor.getId(), request);
         return PrescriptionResponse.from(created);
     }
@@ -96,7 +101,7 @@ public class PrescriptionController {
     @PutMapping("/{id}")
     public PrescriptionResponse replace(Authentication authentication, @PathVariable("id") UUID id, @RequestBody PrescriptionService.CreateRequest request) {
         User actor = requireUser(authentication);
-        requireDoctor(actor);
+        requireDoctorOrPsychiatristProvider(actor);
         Prescription updated = prescriptionService.replaceAsDoctor(id, actor.getId(), request);
         return PrescriptionResponse.from(updated);
     }
@@ -127,9 +132,18 @@ public class PrescriptionController {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
     }
 
-    private static void requireDoctor(User user) {
-        if (user.getRole() != UserRole.DOCTOR) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Doctor role required");
+    private void requireDoctorOrPsychiatristProvider(User user) {
+        if (user == null || user.getId() == null) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED);
+        }
+        if (!ProviderService.isProfessionalRole(user.getRole()) || user.getRole() == UserRole.ADMIN) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Professional role required");
+        }
+
+        Provider provider = providerService.ensureForProfessionalUser(user);
+        ProviderType type = provider.getType();
+        if (type != ProviderType.DOCTOR && type != ProviderType.PSYCHIATRIST) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Prescriber role required");
         }
     }
 

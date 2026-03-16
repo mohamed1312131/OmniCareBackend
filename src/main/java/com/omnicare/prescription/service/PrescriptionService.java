@@ -11,6 +11,9 @@ import com.omnicare.prescription.model.PrescriptionItem;
 import com.omnicare.prescription.repository.PrescriptionRepository;
 import com.omnicare.doctor.model.Consultation;
 import com.omnicare.doctor.repository.ConsultationRepository;
+import com.omnicare.audit.model.AuditEntityType;
+import com.omnicare.audit.model.AuditLogAction;
+import com.omnicare.audit.service.AuditLogService;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -30,13 +33,15 @@ public class PrescriptionService {
     private final MedicationRepository medicationRepository;
     private final UserRepository userRepository;
     private final ConsultationRepository consultationRepository;
+    private final AuditLogService auditLogService;
 
-    public PrescriptionService(PrescriptionRepository prescriptionRepository, PatientRepository patientRepository, MedicationRepository medicationRepository, UserRepository userRepository, ConsultationRepository consultationRepository) {
+    public PrescriptionService(PrescriptionRepository prescriptionRepository, PatientRepository patientRepository, MedicationRepository medicationRepository, UserRepository userRepository, ConsultationRepository consultationRepository, AuditLogService auditLogService) {
         this.prescriptionRepository = prescriptionRepository;
         this.patientRepository = patientRepository;
         this.medicationRepository = medicationRepository;
         this.userRepository = userRepository;
         this.consultationRepository = consultationRepository;
+        this.auditLogService = auditLogService;
     }
 
     public record CreateItemRequest(
@@ -82,7 +87,9 @@ public class PrescriptionService {
             }
         }
 
-        return prescriptionRepository.save(p);
+        Prescription saved = prescriptionRepository.save(p);
+        auditLogService.log(doctor, AuditEntityType.PRESCRIPTION, saved.getId(), AuditLogAction.CREATE, null);
+        return saved;
     }
 
     @Transactional
@@ -100,13 +107,15 @@ public class PrescriptionService {
         User doctor = userRepository.findById(doctorUserId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Doctor not found"));
 
-        Prescription p = prescriptionRepository.findByConsultationId(consultationId)
-                .orElseGet(() -> {
-                    Instant issuedAt = (request == null || request.issuedAt() == null) ? Instant.now() : request.issuedAt();
-                    Prescription created = new Prescription(c.getPatient(), doctor, issuedAt);
-                    created.setConsultation(c);
-                    return created;
-                });
+        var existing = prescriptionRepository.findByConsultationId(consultationId);
+        boolean isNew = existing.isEmpty();
+
+        Prescription p = existing.orElseGet(() -> {
+            Instant issuedAt = (request == null || request.issuedAt() == null) ? Instant.now() : request.issuedAt();
+            Prescription created = new Prescription(c.getPatient(), doctor, issuedAt);
+            created.setConsultation(c);
+            return created;
+        });
 
         if (request != null) {
             if (request.issuedAt() != null) {
@@ -126,7 +135,13 @@ public class PrescriptionService {
         p.setPrescriberUser(doctor);
         p.setConsultation(c);
 
-        return prescriptionRepository.save(p);
+        Prescription saved = prescriptionRepository.save(p);
+        if (isNew) {
+            auditLogService.log(doctor, AuditEntityType.PRESCRIPTION, saved.getId(), AuditLogAction.CREATE, null);
+        } else {
+            auditLogService.log(doctor, AuditEntityType.PRESCRIPTION, saved.getId(), AuditLogAction.UPDATE, null);
+        }
+        return saved;
     }
 
     @Transactional(readOnly = true)
@@ -162,7 +177,9 @@ public class PrescriptionService {
         }
 
         p.setPrescriberUser(doctor);
-        return prescriptionRepository.save(p);
+        Prescription saved = prescriptionRepository.save(p);
+        auditLogService.log(doctor, AuditEntityType.PRESCRIPTION, saved.getId(), AuditLogAction.UPDATE, null);
+        return saved;
     }
 
     @Transactional(readOnly = true)

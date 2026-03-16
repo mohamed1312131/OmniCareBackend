@@ -21,6 +21,9 @@ import com.omnicare.profile.model.RegistrationStatus;
 import com.omnicare.profile.model.UserRole;
 import com.omnicare.profile.model.User;
 import com.omnicare.profile.repository.UserRepository;
+import com.omnicare.provider.model.Provider;
+import com.omnicare.provider.repository.ProviderRepository;
+import com.omnicare.provider.service.ProviderService;
 
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
@@ -54,6 +57,8 @@ public class DevProfessionalSeedController {
     private final PrescriptionRepository prescriptionRepository;
     private final MedicationRepository medicationRepository;
     private final PrescriptionService prescriptionService;
+    private final ProviderService providerService;
+    private final ProviderRepository providerRepository;
 
     public DevProfessionalSeedController(
             UserRepository userRepository,
@@ -64,7 +69,9 @@ public class DevProfessionalSeedController {
             PatientService patientService,
             PrescriptionRepository prescriptionRepository,
             MedicationRepository medicationRepository,
-            PrescriptionService prescriptionService
+            PrescriptionService prescriptionService,
+            ProviderService providerService,
+            ProviderRepository providerRepository
     ) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
@@ -75,6 +82,8 @@ public class DevProfessionalSeedController {
         this.prescriptionRepository = prescriptionRepository;
         this.medicationRepository = medicationRepository;
         this.prescriptionService = prescriptionService;
+        this.providerService = providerService;
+        this.providerRepository = providerRepository;
     }
 
     public record EnsureFakeDoctorResponse(UUID doctorId, String email, String password) {
@@ -99,7 +108,10 @@ public class DevProfessionalSeedController {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Existing user is not a DOCTOR");
         }
 
-        Doctor doctor = doctorRepository.findByUserId(doctorUser.getId()).orElseGet(() -> doctorRepository.save(new Doctor(doctorUser)));
+        Provider provider = providerService.ensureForProfessionalUser(doctorUser);
+        providerRepository.save(provider);
+
+        Doctor doctor = doctorRepository.findByProviderId(provider.getId()).orElseGet(() -> doctorRepository.save(new Doctor(provider)));
         if (doctor.getSpecialty() == null || doctor.getSpecialty().isBlank()) {
             doctor.setSpecialty("General Practitioner");
             doctorRepository.save(doctor);
@@ -264,7 +276,10 @@ public class DevProfessionalSeedController {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Existing user is not a DOCTOR");
         }
 
-        Doctor doctor = doctorRepository.findByUserId(doctorUser.getId()).orElseGet(() -> doctorRepository.save(new Doctor(doctorUser)));
+        Provider provider = providerService.ensureForProfessionalUser(doctorUser);
+        providerRepository.save(provider);
+
+        Doctor doctor = doctorRepository.findByProviderId(provider.getId()).orElseGet(() -> doctorRepository.save(new Doctor(provider)));
 
         if (request.specialty() != null) {
             doctor.setSpecialty(request.specialty().trim());
@@ -273,12 +288,13 @@ public class DevProfessionalSeedController {
             doctor.setExperienceYears(request.yearsExperience());
         }
         if (request.totalReviews() != null) {
-            doctor.setTotalReviews(request.totalReviews());
+            provider.setTotalReviews(request.totalReviews());
         }
         if (request.serviceRadiusKm() != null) {
-            doctor.setServiceRadiusKm(request.serviceRadiusKm());
+            provider.setServiceRadiusKm(request.serviceRadiusKm());
         }
 
+        providerRepository.save(provider);
         doctorRepository.save(doctor);
 
         String stamp = String.valueOf(System.currentTimeMillis());

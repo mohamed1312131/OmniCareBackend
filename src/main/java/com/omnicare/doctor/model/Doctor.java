@@ -1,5 +1,6 @@
 package com.omnicare.doctor.model;
 
+import com.omnicare.provider.model.Provider;
 import com.omnicare.profile.model.User;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -10,11 +11,10 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.OneToOne;
 import jakarta.persistence.Table;
 
-import java.math.BigDecimal;
 import java.util.UUID;
 
 @Entity
-@Table(name = "doctors")
+@Table(name = "doctor_details")
 public class Doctor {
 
     @Id
@@ -22,8 +22,8 @@ public class Doctor {
     private UUID id;
 
     @OneToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "user_id", nullable = false, unique = true)
-    private User user;
+    @JoinColumn(name = "provider_id", nullable = false, unique = true)
+    private Provider provider;
 
     @Column(name = "specialty")
     private String specialty;
@@ -31,35 +31,26 @@ public class Doctor {
     @Column(name = "experience_years")
     private Integer experienceYears;
 
-    @Column(name = "total_reviews")
-    private Integer totalReviews;
-
-    @Column(name = "rating", nullable = false)
-    private BigDecimal rating = new BigDecimal("5.0");
-
-    @Column(name = "service_radius_km")
-    private Integer serviceRadiusKm;
-
-    @Column(name = "is_online", nullable = false)
-    private boolean online;
+    @Column(name = "medical_license_number")
+    private String medicalLicenseNumber;
 
     protected Doctor() {
     }
 
-    public Doctor(User user) {
-        this.user = user;
+    public Doctor(Provider provider) {
+        this.provider = provider;
     }
 
     public UUID getId() {
         return id;
     }
 
-    public User getUser() {
-        return user;
+    public Provider getProvider() {
+        return provider;
     }
 
-    public void setUser(User user) {
-        this.user = user;
+    public void setProvider(Provider provider) {
+        this.provider = provider;
     }
 
     public String getSpecialty() {
@@ -78,37 +69,11 @@ public class Doctor {
         this.experienceYears = experienceYears;
     }
 
-    public Integer getTotalReviews() {
-        return totalReviews;
+    public String getMedicalLicenseNumber() {
+        return medicalLicenseNumber;
     }
 
-    public void setTotalReviews(Integer totalReviews) {
-        this.totalReviews = totalReviews;
-    }
-
-    public BigDecimal getRating() {
-        return rating;
-    }
-
-    public void setRating(BigDecimal rating) {
-        if (rating != null) {
-            this.rating = rating;
-        }
-    }
-
-    public Integer getServiceRadiusKm() {
-        return serviceRadiusKm;
-    }
-
-    public void setServiceRadiusKm(Integer serviceRadiusKm) {
-        this.serviceRadiusKm = serviceRadiusKm;
-    }
-
-    public boolean isOnline() {
-        return online;
-    }
-
-    public void setOnline(boolean online) {
-        this.online = online;
+    public void setMedicalLicenseNumber(String medicalLicenseNumber) {
+        this.medicalLicenseNumber = medicalLicenseNumber;
     }
 }

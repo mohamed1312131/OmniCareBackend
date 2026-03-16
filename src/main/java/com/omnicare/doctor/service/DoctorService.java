@@ -4,6 +4,8 @@ import com.omnicare.profile.model.UserRole;
 import com.omnicare.profile.model.User;
 import com.omnicare.doctor.repository.DoctorRepository;
 import com.omnicare.doctor.model.Doctor;
+import com.omnicare.provider.model.Provider;
+import com.omnicare.provider.service.ProviderService;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -16,9 +18,11 @@ import java.util.UUID;
 public class DoctorService {
 
     private final DoctorRepository doctorRepository;
+    private final ProviderService providerService;
 
-    public DoctorService(DoctorRepository doctorRepository) {
+    public DoctorService(DoctorRepository doctorRepository, ProviderService providerService) {
         this.doctorRepository = doctorRepository;
+        this.providerService = providerService;
     }
 
     @Transactional
@@ -30,13 +34,14 @@ public class DoctorService {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Doctor role required");
         }
 
-        return doctorRepository.findByUserId(user.getId())
-                .orElseGet(() -> doctorRepository.save(new Doctor(user)));
+        Provider provider = providerService.ensureForProfessionalUser(user);
+        return doctorRepository.findByProviderId(provider.getId())
+                .orElseGet(() -> doctorRepository.save(new Doctor(provider)));
     }
 
     @Transactional(readOnly = true)
     public Doctor requireByDoctorUserId(UUID doctorUserId) {
-        return doctorRepository.findByUserId(doctorUserId)
+        return doctorRepository.findByProviderUserId(doctorUserId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Doctor profile not found"));
     }
 }

@@ -1,6 +1,8 @@
 package com.omnicare.doctor.model;
 
 import com.omnicare.patient.model.Patient;
+import com.omnicare.provider.model.Provider;
+import com.omnicare.profile.model.User;
 import jakarta.persistence.Column;
 import jakarta.persistence.CollectionTable;
 import jakarta.persistence.ElementCollection;
@@ -31,9 +33,13 @@ public class Consultation {
     @GeneratedValue
     private UUID id;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "doctor_id", nullable = false)
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "doctor_id")
     private Doctor doctor;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "provider_id")
+    private Provider provider;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "patient_id")
@@ -54,6 +60,17 @@ public class Consultation {
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false)
     private ConsultationStatus status = ConsultationStatus.PENDING;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "cancellation_reason")
+    private ConsultationCancellationReason cancellationReason;
+
+    @Column(name = "cancelled_at")
+    private Instant cancelledAt;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "cancelled_by_user_id")
+    private User cancelledByUser;
 
     @Column(name = "fee", precision = 19, scale = 2)
     private BigDecimal fee;
@@ -91,7 +108,7 @@ public class Consultation {
     @Column(name = "timestamp", nullable = false)
     private Instant timestamp = Instant.now();
 
-    protected Consultation() {
+    public Consultation() {
     }
 
     public Consultation(Doctor doctor) {
@@ -108,6 +125,14 @@ public class Consultation {
 
     public void setDoctor(Doctor doctor) {
         this.doctor = doctor;
+    }
+
+    public Provider getProvider() {
+        return provider;
+    }
+
+    public void setProvider(Provider provider) {
+        this.provider = provider;
     }
 
     public Patient getPatient() {
@@ -158,6 +183,30 @@ public class Consultation {
         if (status != null) {
             this.status = status;
         }
+    }
+
+    public ConsultationCancellationReason getCancellationReason() {
+        return cancellationReason;
+    }
+
+    public void setCancellationReason(ConsultationCancellationReason cancellationReason) {
+        this.cancellationReason = cancellationReason;
+    }
+
+    public Instant getCancelledAt() {
+        return cancelledAt;
+    }
+
+    public void setCancelledAt(Instant cancelledAt) {
+        this.cancelledAt = cancelledAt;
+    }
+
+    public User getCancelledByUser() {
+        return cancelledByUser;
+    }
+
+    public void setCancelledByUser(User cancelledByUser) {
+        this.cancelledByUser = cancelledByUser;
     }
 
     public BigDecimal getFee() {

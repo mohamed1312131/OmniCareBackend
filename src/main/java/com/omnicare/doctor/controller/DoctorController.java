@@ -14,6 +14,9 @@ import com.omnicare.doctor.service.RevenueService;
 import com.omnicare.profile.model.UserRole;
 import com.omnicare.profile.model.User;
 import com.omnicare.profile.repository.UserRepository;
+import com.omnicare.provider.model.Provider;
+import com.omnicare.provider.repository.ProviderRepository;
+import com.omnicare.provider.service.ProviderService;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
@@ -40,14 +43,18 @@ public class DoctorController {
     private final UserRepository userRepository;
     private final DoctorService doctorService;
     private final DoctorRepository doctorRepository;
+    private final ProviderRepository providerRepository;
+    private final ProviderService providerService;
     private final ConsultationRepository consultationRepository;
     private final RevenueService revenueService;
     private final DoctorDocumentRepository doctorDocumentRepository;
 
-    public DoctorController(UserRepository userRepository, DoctorService doctorService, DoctorRepository doctorRepository, ConsultationRepository consultationRepository, RevenueService revenueService, DoctorDocumentRepository doctorDocumentRepository) {
+    public DoctorController(UserRepository userRepository, DoctorService doctorService, DoctorRepository doctorRepository, ProviderRepository providerRepository, ProviderService providerService, ConsultationRepository consultationRepository, RevenueService revenueService, DoctorDocumentRepository doctorDocumentRepository) {
         this.userRepository = userRepository;
         this.doctorService = doctorService;
         this.doctorRepository = doctorRepository;
+        this.providerRepository = providerRepository;
+        this.providerService = providerService;
         this.consultationRepository = consultationRepository;
         this.revenueService = revenueService;
         this.doctorDocumentRepository = doctorDocumentRepository;
@@ -81,16 +88,19 @@ public class DoctorController {
             List<VerificationDocumentResponse> verificationDocuments
     ) {
         static DoctorProfileResponse from(Doctor d, List<DoctorDocument> docs) {
+            if (d == null || d.getProvider() == null || d.getProvider().getUser() == null) {
+                return new DoctorProfileResponse(null, null, null, null, null, null, null, null, false, (docs == null ? List.of() : docs.stream().map(VerificationDocumentResponse::from).toList()));
+            }
             return new DoctorProfileResponse(
                     d.getId(),
-                    d.getUser().getId(),
-                    d.getUser().getName(),
+                    d.getProvider().getUser().getId(),
+                    d.getProvider().getUser().getName(),
                     d.getSpecialty(),
                     d.getExperienceYears(),
-                    d.getTotalReviews(),
-                    d.getRating(),
-                    d.getServiceRadiusKm(),
-                    d.isOnline(),
+                    d.getProvider().getTotalReviews(),
+                    d.getProvider().getRating(),
+                    d.getProvider().getServiceRadiusKm(),
+                    d.getProvider().isOnline(),
                     (docs == null ? List.of() : docs.stream().map(VerificationDocumentResponse::from).toList())
             );
         }
@@ -139,7 +149,7 @@ public class DoctorController {
 
             return new ConsultationResponse(
                     c.getId(),
-                    c.getDoctor().getId(),
+                    c.getDoctor() == null ? null : c.getDoctor().getId(),
                     patientUserId,
                     familyId,
                     patientName,
@@ -205,6 +215,8 @@ public class DoctorController {
         requireDoctor(actor);
 
         Doctor doctor = doctorService.ensureForDoctorUser(actor);
+        Provider provider = providerService.ensureForProfessionalUser(actor);
+
         Boolean desired = null;
         if (request != null) {
             if (request.goLive() != null) {
@@ -213,10 +225,10 @@ public class DoctorController {
                 desired = request.isOnline();
             }
         }
-        boolean next = desired != null ? desired : !doctor.isOnline();
-        doctor.setOnline(next);
-        doctorRepository.save(doctor);
-        return new DoctorStatusResponse(doctor.getId(), doctor.isOnline());
+        boolean next = desired != null ? desired : !provider.isOnline();
+        provider.setOnline(next);
+        providerRepository.save(provider);
+        return new DoctorStatusResponse(doctor.getId(), provider.isOnline());
     }
 
     @PatchMapping("/profile")
@@ -226,6 +238,7 @@ public class DoctorController {
         requireDoctor(actor);
 
         Doctor doctor = doctorService.ensureForDoctorUser(actor);
+        Provider provider = providerService.ensureForProfessionalUser(actor);
 
         if (request != null) {
             if (request.specialty() != null) {
@@ -233,7 +246,7 @@ public class DoctorController {
                 doctor.setSpecialty(trimmed.isEmpty() ? null : trimmed);
             }
             if (request.serviceRadiusKm() != null) {
-                doctor.setServiceRadiusKm(request.serviceRadiusKm());
+                provider.setServiceRadiusKm(request.serviceRadiusKm());
             }
             if (request.yearsExperience() != null) {
                 doctor.setExperienceYears(request.yearsExperience());
@@ -241,6 +254,7 @@ public class DoctorController {
         }
 
         doctorRepository.save(doctor);
+        providerRepository.save(provider);
         List<DoctorDocument> docs = doctorDocumentRepository.findAllByDoctorIdOrderByCreatedAtDesc(doctor.getId());
         return DoctorProfileResponse.from(doctor, docs);
     }

@@ -9,7 +9,9 @@ import java.util.UUID;
 
 public interface DoctorRepository extends JpaRepository<Doctor, UUID> {
 
-    Optional<Doctor> findByUserId(UUID userId);
+    Optional<Doctor> findByProviderUserId(UUID userId);
+
+    Optional<Doctor> findByProviderId(UUID providerId);
 
     List<Doctor> findAllBySpecialtyIgnoreCase(String specialty);
 
