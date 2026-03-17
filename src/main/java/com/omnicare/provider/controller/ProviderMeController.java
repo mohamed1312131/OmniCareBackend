@@ -12,6 +12,7 @@ import com.omnicare.profile.model.User;
 import com.omnicare.profile.model.UserRole;
 import com.omnicare.profile.repository.UserRepository;
 import com.omnicare.provider.model.Provider;
+import com.omnicare.provider.model.ProviderType;
 import com.omnicare.provider.service.ProviderService;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
@@ -49,6 +50,26 @@ public class ProviderMeController {
         this.consultationRepository = consultationRepository;
         this.patientAccessService = patientAccessService;
         this.patientRepository = patientRepository;
+    }
+
+    public record ProviderMeResponse(UUID providerId, ProviderType providerType, boolean isOnline) {
+        static ProviderMeResponse from(Provider p) {
+            if (p == null) {
+                return new ProviderMeResponse(null, null, false);
+            }
+            return new ProviderMeResponse(p.getId(), p.getType(), p.isOnline());
+        }
+    }
+
+    @GetMapping
+    @Transactional(readOnly = true)
+    public ProviderMeResponse me(Authentication authentication) {
+        User actor = requireUser(authentication);
+        if (!ProviderService.isProfessionalRole(actor.getRole()) || actor.getRole() == UserRole.ADMIN) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Professional role required");
+        }
+        Provider provider = providerService.ensureForProfessionalUser(actor);
+        return ProviderMeResponse.from(provider);
     }
 
     @GetMapping("/consultations")

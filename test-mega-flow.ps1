@@ -153,14 +153,26 @@ do {
   Print-Step "SETUP: Login as Patient"
   $loginPatient = Invoke-Api -Method POST -Path "/api/auth/login" -Body @{ email=$patientEmail; password=$PasswordPlain }
   $patientToken = $null
-  if ($loginPatient.Ok -and $loginPatient.Json -and $loginPatient.Json.token) { $patientToken = $loginPatient.Json.token }
+  if ($loginPatient.Ok -and $loginPatient.Json) {
+    if ($loginPatient.Json.token) {
+      $patientToken = $loginPatient.Json.token
+    } elseif ($loginPatient.Json.data -and $loginPatient.Json.data.accessToken) {
+      $patientToken = $loginPatient.Json.data.accessToken
+    }
+  }
   Add-Result "auth.login.patient" ($loginPatient.Ok -and $patientToken) $loginPatient.Status ($loginPatient.Raw -replace "\s+"," ")
   if (-not $patientToken) { break }
 
   Print-Step "SETUP: Login as Doctor"
   $loginDoctor = Invoke-Api -Method POST -Path "/api/auth/login" -Body @{ email=$doctorEmail; password=$PasswordPlain }
   $doctorToken = $null
-  if ($loginDoctor.Ok -and $loginDoctor.Json -and $loginDoctor.Json.token) { $doctorToken = $loginDoctor.Json.token }
+  if ($loginDoctor.Ok -and $loginDoctor.Json) {
+    if ($loginDoctor.Json.token) {
+      $doctorToken = $loginDoctor.Json.token
+    } elseif ($loginDoctor.Json.data -and $loginDoctor.Json.data.accessToken) {
+      $doctorToken = $loginDoctor.Json.data.accessToken
+    }
+  }
   Add-Result "auth.login.doctor" ($loginDoctor.Ok -and $doctorToken) $loginDoctor.Status ($loginDoctor.Raw -replace "\s+"," ")
   if (-not $doctorToken) { break }
 
@@ -175,6 +187,16 @@ do {
   $goLive = Invoke-Api -Method PATCH -Path "/api/doctor/status" -Token $doctorToken -Body @{ goLive = $true }
   Add-Result "doctor.status.goLive" $goLive.Ok $goLive.Status ($goLive.Raw -replace "\s+"," ")
   if (-not $goLive.Ok) { break }
+
+  # ------------------------------------------------------------
+  # Reservation handshake: patient intent -> provider proposes 3 slots -> patient accepts -> consultation created
+  # ------------------------------------------------------------
+  Print-Step "RESERVATION: Resolve providerId (as doctor)"
+  $providerMe = Invoke-Api -Method GET -Path "/api/providers/me" -Token $doctorToken
+  $providerId = $null
+  if ($providerMe.Ok -and $providerMe.Json -and $providerMe.Json.providerId) { $providerId = $providerMe.Json.providerId }
+  Add-Result "providers.me" ($providerMe.Ok -and $providerId) $providerMe.Status ("providerId=$providerId")
+  if (-not $providerId) { break }
 
   # ------------------------------------------------------------
   # Family members: create N
@@ -214,6 +236,62 @@ do {
   $userPatientId = $userPatient.patientId
   Add-Result "patients.user.resolve" ([bool]$userPatientId) $null ("patientId=$userPatientId")
   if (-not $userPatientId) { break }
+
+  Print-Step "RESERVATION: Patient creates reservation request"
+  $searchStart = (Get-Date).ToString("yyyy-MM-dd")
+  $searchEnd = (Get-Date).AddDays(7).ToString("yyyy-MM-dd")
+
+  $createResBody = @{
+    patientId = $userPatientId
+    providerId = $providerId
+    searchStartDate = $searchStart
+    searchEndDate = $searchEnd
+    reason = "Routine scheduled care"
+    intents = @(
+      @{ dayOfWeek = "MONDAY"; specificDate = $null; timeWindow = "MORNING"; exactTime = $null },
+      @{ dayOfWeek = $null; specificDate = (Get-Date).AddDays(2).ToString("yyyy-MM-dd"); timeWindow = "ANYTIME"; exactTime = "10:00:00" }
+    )
+  }
+  $createRes = Invoke-Api -Method POST -Path "/api/reservations/requests" -Token $patientToken -Body $createResBody
+  $resId = $null
+  if ($createRes.Ok -and $createRes.Json -and $createRes.Json.id) { $resId = $createRes.Json.id }
+  Add-Result "reservations.create" ($createRes.Ok -and $resId) $createRes.Status ($createRes.Raw -replace "\s+"," ")
+  if (-not $resId) { break }
+
+  Print-Step "RESERVATION: Provider proposes 3 precise slots"
+  $slot1 = (Get-Date).AddDays(3).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:00")
+  $slot2 = (Get-Date).AddDays(4).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:00")
+  $slot3 = (Get-Date).AddDays(5).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:00")
+  $propose = Invoke-Api -Method POST -Path "/api/reservations/requests/$resId/propose" -Token $doctorToken -Body @{ slots = @($slot1, $slot2, $slot3) }
+  $proposeOk = $propose.Ok -and $propose.Json -and $propose.Json.status -eq "PROPOSED" -and $propose.Json.slots -and (@($propose.Json.slots)).Count -eq 3
+  Add-Result "reservations.propose" $proposeOk $propose.Status ($propose.Raw -replace "\s+"," ")
+  if (-not $proposeOk) { break }
+
+  $acceptedSlot = @($propose.Json.slots)[0]
+  $acceptedSlotId = $acceptedSlot.id
+  $acceptedSlotDateTime = $acceptedSlot.dateTime
+  Add-Result "reservations.slot.pick" ([bool]$acceptedSlotId) $null ("slotId=$acceptedSlotId dateTime=$acceptedSlotDateTime")
+  if (-not $acceptedSlotId) { break }
+
+  Print-Step "RESERVATION: Patient accepts one slot"
+  $accept = Invoke-Api -Method POST -Path "/api/reservations/requests/$resId/accept" -Token $patientToken -Body @{ slotId = $acceptedSlotId }
+  $consultationId = $null
+  if ($accept.Ok -and $accept.Json -and $accept.Json.consultationId) { $consultationId = $accept.Json.consultationId }
+  $acceptOk = $accept.Ok -and $consultationId -and $accept.Json.reservation -and $accept.Json.reservation.status -eq "CONFIRMED"
+  Add-Result "reservations.accept" $acceptOk $accept.Status ($accept.Raw -replace "\s+"," ")
+  if (-not $acceptOk) { break }
+
+  Print-Step "RESERVATION: Verify consultation timestamp matches accepted slot (UTC)"
+  $consList = Invoke-Api -Method GET -Path "/api/consultations" -Token $patientToken
+  $found = $null
+  if ($consList.Ok -and $consList.Json) {
+    $found = @($consList.Json) | Where-Object { $_.id -eq $consultationId } | Select-Object -First 1
+  }
+  $expectedTs = ($acceptedSlotDateTime + ":00Z")
+  $tsOk = $found -and $found.timestamp -and ($found.timestamp -like ($acceptedSlotDateTime + "*"))
+  Add-Result "reservations.consultation.created" ([bool]$found) $consList.Status ("consultationId=$consultationId")
+  Add-Result "reservations.consultation.timestamp" ([bool]$tsOk) $null ("expectedPrefix=$acceptedSlotDateTime actual=$($found.timestamp)")
+  if (-not $tsOk) { break }
 
   # Resolve family member patients (by familyMemberId match)
   $familyPatientIds = @()
@@ -333,8 +411,8 @@ do {
 Print-Step "RESULTS TABLE"
 $results | Format-Table -AutoSize
 
-$failed = $results | Where-Object { -not $_.Ok }
-if ($failed -and $failed.Count -gt 0) {
+$failed = @($results | Where-Object { -not $_.Ok })
+if ($failed.Count -gt 0) {
   Write-Host "\nFAILED: $($failed.Count) step(s)" -ForegroundColor Red
   exit 1
 }
