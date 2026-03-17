@@ -8,6 +8,8 @@ import com.omnicare.patient.repository.PatientMedicationRepository;
 import com.omnicare.patient.repository.PatientRepository;
 import com.omnicare.profile.model.User;
 import com.omnicare.profile.repository.UserRepository;
+import com.omnicare.prescription.model.Prescription;
+import com.omnicare.prescription.model.PrescriptionItem;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -15,7 +17,9 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 @Service
@@ -95,5 +99,65 @@ public class PatientMedicationService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Medication not found"));
 
         patientMedicationRepository.delete(pm);
+    }
+
+    @Transactional
+    public void syncFromPrescription(Prescription prescription, User actor) {
+        if (prescription == null || prescription.getId() == null) {
+            return;
+        }
+        if (prescription.getPatient() == null || prescription.getPatient().getId() == null) {
+            return;
+        }
+
+        UUID patientId = prescription.getPatient().getId();
+        UUID prescriptionId = prescription.getId();
+
+        List<PatientMedication> existing = patientMedicationRepository.findAllByPatientIdAndSourcePrescriptionId(patientId, prescriptionId);
+
+        Set<UUID> keepItemIds = new HashSet<>();
+        List<PrescriptionItem> items = prescription.getItems();
+        if (items != null) {
+            for (PrescriptionItem item : items) {
+                if (item == null || item.getMedication() == null || item.getMedication().getId() == null) {
+                    continue;
+                }
+                if (item.getId() == null) {
+                    continue;
+                }
+                keepItemIds.add(item.getId());
+
+                PatientMedication pm = patientMedicationRepository
+                        .findByPatientIdAndSourcePrescriptionItemId(patientId, item.getId())
+                        .orElseGet(() -> new PatientMedication(prescription.getPatient(), item.getMedication()));
+
+                pm.setSourcePrescriptionId(prescriptionId);
+                pm.setSourcePrescriptionItemId(item.getId());
+                pm.setTimesPerDay(item.getFrequencyTimes());
+                pm.setDurationDays(item.getDurationDays());
+                pm.setStartDate(item.getStartDate());
+
+                if (item.getInstructions() != null && !item.getInstructions().isBlank()) {
+                    pm.setNotes(item.getInstructions().trim());
+                }
+
+                pm.setRecordedAt(Instant.now());
+                if (actor != null && actor.getId() != null) {
+                    pm.setCreatedByUser(actor);
+                }
+
+                patientMedicationRepository.save(pm);
+            }
+        }
+
+        for (PatientMedication row : existing) {
+            if (row == null) {
+                continue;
+            }
+            UUID sourceItemId = row.getSourcePrescriptionItemId();
+            if (sourceItemId != null && !keepItemIds.contains(sourceItemId)) {
+                patientMedicationRepository.delete(row);
+            }
+        }
     }
 }

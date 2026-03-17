@@ -11,6 +11,7 @@ import com.omnicare.doctor.model.Consultation;
 import com.omnicare.doctor.model.ConsultationCancellationReason;
 import com.omnicare.doctor.model.ConsultationStatus;
 import com.omnicare.doctor.model.Doctor;
+import com.omnicare.doctor.model.ConsultationLocationType;
 import com.omnicare.doctor.service.DoctorService;
 import com.omnicare.provider.model.Provider;
 import com.omnicare.provider.model.ProviderType;
@@ -23,6 +24,14 @@ import com.omnicare.audit.service.AuditLogService;
 import com.omnicare.prescription.service.PrescriptionService;
 import com.omnicare.prescription.model.Prescription;
 import com.omnicare.prescription.model.PrescriptionItem;
+import com.omnicare.doctor.service.ConsultationFinancialService;
+import com.omnicare.doctor.model.ConsultationMedicalAct;
+import com.omnicare.doctor.repository.ConsultationMedicalActRepository;
+import com.omnicare.medicalact.model.MedicalActCatalog;
+import com.omnicare.medicalact.repository.MedicalActCatalogRepository;
+import com.omnicare.body.repository.BodyPartCatalogRepository;
+import com.omnicare.kine.model.TreatmentPlan;
+import com.omnicare.kine.repository.TreatmentPlanRepository;
 import com.omnicare.profile.model.UserRole;
 import com.omnicare.profile.model.User;
 import com.omnicare.profile.repository.UserRepository;
@@ -37,6 +46,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
@@ -57,6 +67,11 @@ public class ConsultationController {
     private final PrescriptionService prescriptionService;
     private final PatientAccessService patientAccessService;
     private final AuditLogService auditLogService;
+    private final ConsultationFinancialService consultationFinancialService;
+    private final MedicalActCatalogRepository medicalActCatalogRepository;
+    private final ConsultationMedicalActRepository consultationMedicalActRepository;
+    private final BodyPartCatalogRepository bodyPartCatalogRepository;
+    private final TreatmentPlanRepository treatmentPlanRepository;
 
     public ConsultationController(
             UserRepository userRepository,
@@ -69,7 +84,12 @@ public class ConsultationController {
             PatientAllergyRepository patientAllergyRepository,
             PrescriptionService prescriptionService,
             PatientAccessService patientAccessService,
-            AuditLogService auditLogService
+            AuditLogService auditLogService,
+            ConsultationFinancialService consultationFinancialService,
+            MedicalActCatalogRepository medicalActCatalogRepository,
+            ConsultationMedicalActRepository consultationMedicalActRepository,
+            BodyPartCatalogRepository bodyPartCatalogRepository,
+            TreatmentPlanRepository treatmentPlanRepository
     ) {
         this.userRepository = userRepository;
         this.doctorService = doctorService;
@@ -82,6 +102,11 @@ public class ConsultationController {
         this.prescriptionService = prescriptionService;
         this.patientAccessService = patientAccessService;
         this.auditLogService = auditLogService;
+        this.consultationFinancialService = consultationFinancialService;
+        this.medicalActCatalogRepository = medicalActCatalogRepository;
+        this.consultationMedicalActRepository = consultationMedicalActRepository;
+        this.bodyPartCatalogRepository = bodyPartCatalogRepository;
+        this.treatmentPlanRepository = treatmentPlanRepository;
     }
 
     @GetMapping
@@ -125,13 +150,17 @@ public class ConsultationController {
             String symptoms,
             Integer painLevel,
             List<String> affectedAreas,
+            ConsultationLocationType locationType,
+            UUID treatmentPlanId,
             String streetAddress,
             String apartmentSuite,
             String city,
             Double latitude,
             Double longitude,
             BigDecimal basePrice,
-            BigDecimal fee
+            BigDecimal fee,
+            List<UUID> medicalActIds,
+            String otherMedicalActText
     ) {
     }
 
@@ -371,10 +400,74 @@ public class ConsultationController {
         c.setSymptoms(request.symptoms().trim());
         c.setStatus(ConsultationStatus.PENDING);
 
-        if (request.basePrice() != null) {
-            c.setFee(request.basePrice());
-        } else if (request.fee() != null) {
-            c.setFee(request.fee());
+        if (provider.getType() == ProviderType.KINE) {
+            c.setLocationType(request.locationType() == null ? ConsultationLocationType.CLINIC : request.locationType());
+            if (request.treatmentPlanId() != null) {
+                TreatmentPlan plan = treatmentPlanRepository.findById(request.treatmentPlanId())
+                        .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid treatmentPlanId"));
+                if (plan.getPatient() == null || plan.getPatient().getId() == null || !plan.getPatient().getId().equals(patient.getId())) {
+                    throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "treatmentPlanId does not belong to patient");
+                }
+                if (plan.getProvider() == null || plan.getProvider().getId() == null || !plan.getProvider().getId().equals(provider.getId())) {
+                    throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "treatmentPlanId does not belong to provider");
+                }
+                c.setTreatmentPlan(plan);
+            }
+        } else {
+            if (request.locationType() != null) {
+                c.setLocationType(request.locationType());
+            }
+            if (request.treatmentPlanId() != null) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "treatmentPlanId is only supported for kine consultations");
+            }
+        }
+
+        List<MedicalActCatalog> selectedActs = List.of();
+        if (provider.getType() == ProviderType.NURSE) {
+            if (request.medicalActIds() == null || request.medicalActIds().isEmpty()) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "medicalActIds is required for nurse consultations");
+            }
+
+            List<UUID> cleanedIds = request.medicalActIds().stream()
+                    .filter(Objects::nonNull)
+                    .distinct()
+                    .toList();
+            if (cleanedIds.isEmpty()) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "medicalActIds is required for nurse consultations");
+            }
+
+            selectedActs = medicalActCatalogRepository.findAllById(cleanedIds);
+            if (selectedActs.size() != cleanedIds.size()) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "One or more medicalActIds are invalid");
+            }
+
+            boolean hasOther = selectedActs.stream().anyMatch(a -> a != null && a.getCode() != null && a.getCode().equalsIgnoreCase("NURSE_OTHER_COMPLEX_CARE"));
+            String otherText = request.otherMedicalActText();
+            if (hasOther) {
+                if (otherText == null || otherText.isBlank()) {
+                    throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "otherMedicalActText is required when selecting Other / Complex Care");
+                }
+                c.setOtherMedicalActText(otherText.trim());
+            } else {
+                if (otherText != null && !otherText.isBlank()) {
+                    throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "otherMedicalActText is only allowed when selecting Other / Complex Care");
+                }
+            }
+
+            BigDecimal computedFee = BigDecimal.ZERO;
+            for (MedicalActCatalog act : selectedActs) {
+                if (act == null || act.getBasePrice() == null) {
+                    continue;
+                }
+                computedFee = computedFee.add(act.getBasePrice());
+            }
+            c.setFee(computedFee);
+        } else {
+            if (request.basePrice() != null) {
+                c.setFee(request.basePrice());
+            } else if (request.fee() != null) {
+                c.setFee(request.fee());
+            }
         }
 
         c.setPainLevel(request.painLevel());
@@ -386,6 +479,13 @@ public class ConsultationController {
                     .filter(s -> !s.isEmpty())
                     .distinct()
                     .toList();
+
+            if (!cleaned.isEmpty()) {
+                long known = bodyPartCatalogRepository.countByKeyIgnoreCaseIn(cleaned);
+                if (known != cleaned.size()) {
+                    throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "One or more affectedAreas keys are invalid");
+                }
+            }
             c.setAffectedAreas(cleaned);
         }
 
@@ -406,12 +506,22 @@ public class ConsultationController {
 
         c.setTimestamp(Instant.now());
 
+        consultationFinancialService.apply(c);
+
         // patient initiating consultation grants provider access (revocable by both parties)
         if (isPatientActor) {
             patientAccessService.grantAccessFromPatientToProvider(actor, patient.getId(), provider.getId());
         }
 
         Consultation saved = consultationRepository.save(c);
+
+        if (provider.getType() == ProviderType.NURSE && selectedActs != null && !selectedActs.isEmpty()) {
+            List<ConsultationMedicalAct> rows = new ArrayList<>();
+            for (MedicalActCatalog act : selectedActs) {
+                rows.add(new ConsultationMedicalAct(saved, act));
+            }
+            consultationMedicalActRepository.saveAll(rows);
+        }
         return ConsultationFlowResponse.from(saved, null);
     }
 
@@ -439,12 +549,13 @@ public class ConsultationController {
                 c.setStatus(request.status());
             }
             if (request.status() == ConsultationStatus.CANCELLED) {
-                if (request.cancellationReason() != null) {
-                    c.setCancellationReason(request.cancellationReason());
-                }
+                ConsultationCancellationReason finalReason = request.cancellationReason() == null
+                        ? defaultCancellationReasonForActor(actor)
+                        : request.cancellationReason();
+                c.setCancellationReason(finalReason);
                 c.setCancelledAt(Instant.now());
                 c.setCancelledByUser(actor);
-                auditLogService.log(actor, AuditEntityType.CONSULTATION, c.getId(), AuditLogAction.CANCEL, request.cancellationReason() == null ? null : request.cancellationReason().name());
+                auditLogService.log(actor, AuditEntityType.CONSULTATION, c.getId(), AuditLogAction.CANCEL, finalReason.name());
             }
             if (request.diagnosis() != null) {
                 String trimmed = request.diagnosis().trim();
@@ -456,9 +567,24 @@ public class ConsultationController {
             }
         }
 
+        consultationFinancialService.apply(c);
+
         Consultation saved = consultationRepository.save(c);
         String warning = computeAllergyWarning(saved);
         return ConsultationFlowResponse.from(saved, warning);
+    }
+
+    private static ConsultationCancellationReason defaultCancellationReasonForActor(User actor) {
+        if (actor == null || actor.getRole() == null) {
+            return ConsultationCancellationReason.OTHER;
+        }
+        if (actor.getRole() == UserRole.PATIENT) {
+            return ConsultationCancellationReason.PATIENT_CANCELLED;
+        }
+        if (ProviderService.isProfessionalRole(actor.getRole()) && actor.getRole() != UserRole.ADMIN) {
+            return ConsultationCancellationReason.PROVIDER_CANCELLED;
+        }
+        return ConsultationCancellationReason.OTHER;
     }
 
     @PostMapping("/{id}/complete")

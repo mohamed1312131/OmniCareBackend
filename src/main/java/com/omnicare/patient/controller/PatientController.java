@@ -335,7 +335,7 @@ public class PatientController {
         return patientChronicConditionService.listForOwner(owner.getId(), patientId).stream().map(PatientChronicConditionResponse::from).toList();
     }
 
-    public record CreateConditionRequest(String name, String notes) {
+    public record CreateConditionRequest(UUID conditionId, String name, String notes) {
     }
 
     public record PatientChronicConditionResponse(UUID id, String name, String notes) {
@@ -348,7 +348,7 @@ public class PatientController {
     public PatientChronicConditionResponse addCondition(Authentication authentication, @PathVariable UUID patientId, @RequestBody CreateConditionRequest request) {
         String email = requireEmail(authentication);
         User owner = userRepository.findByEmail(email).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
-        PatientChronicCondition created = patientChronicConditionService.addForOwner(owner.getId(), patientId, email, new PatientChronicConditionService.CreateRequest(request.name(), request.notes()));
+        PatientChronicCondition created = patientChronicConditionService.addForOwner(owner.getId(), patientId, email, new PatientChronicConditionService.CreateRequest(request.conditionId(), request.name(), request.notes()));
         return PatientChronicConditionResponse.from(created);
     }
 

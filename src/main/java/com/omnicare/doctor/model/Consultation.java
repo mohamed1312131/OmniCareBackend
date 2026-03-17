@@ -3,6 +3,7 @@ package com.omnicare.doctor.model;
 import com.omnicare.patient.model.Patient;
 import com.omnicare.provider.model.Provider;
 import com.omnicare.profile.model.User;
+import com.omnicare.kine.model.TreatmentPlan;
 import jakarta.persistence.Column;
 import jakarta.persistence.CollectionTable;
 import jakarta.persistence.ElementCollection;
@@ -48,6 +49,9 @@ public class Consultation {
     @Column(name = "symptoms", columnDefinition = "text")
     private String symptoms;
 
+    @Column(name = "other_medical_act_text", columnDefinition = "text")
+    private String otherMedicalActText;
+
     @Column(name = "diagnosis", columnDefinition = "text")
     private String diagnosis;
 
@@ -74,6 +78,26 @@ public class Consultation {
 
     @Column(name = "fee", precision = 19, scale = 2)
     private BigDecimal fee;
+
+    @Column(name = "displacement_fee_amount", precision = 19, scale = 2)
+    private BigDecimal displacementFeeAmount;
+
+    @Column(name = "platform_fee_percentage_applied", precision = 5, scale = 2)
+    private BigDecimal platformFeePercentageApplied;
+
+    @Column(name = "platform_fee_amount", precision = 19, scale = 2)
+    private BigDecimal platformFeeAmount;
+
+    @Column(name = "net_amount", precision = 19, scale = 2)
+    private BigDecimal netAmount;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "location_type")
+    private ConsultationLocationType locationType;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "treatment_plan_id")
+    private TreatmentPlan treatmentPlan;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "payment_method")
@@ -151,6 +175,14 @@ public class Consultation {
         this.symptoms = symptoms;
     }
 
+    public String getOtherMedicalActText() {
+        return otherMedicalActText;
+    }
+
+    public void setOtherMedicalActText(String otherMedicalActText) {
+        this.otherMedicalActText = otherMedicalActText;
+    }
+
     public String getDiagnosis() {
         return diagnosis;
     }
@@ -215,6 +247,54 @@ public class Consultation {
 
     public void setFee(BigDecimal fee) {
         this.fee = fee;
+    }
+
+    public BigDecimal getDisplacementFeeAmount() {
+        return displacementFeeAmount;
+    }
+
+    public void setDisplacementFeeAmount(BigDecimal displacementFeeAmount) {
+        this.displacementFeeAmount = displacementFeeAmount;
+    }
+
+    public ConsultationLocationType getLocationType() {
+        return locationType;
+    }
+
+    public void setLocationType(ConsultationLocationType locationType) {
+        this.locationType = locationType;
+    }
+
+    public TreatmentPlan getTreatmentPlan() {
+        return treatmentPlan;
+    }
+
+    public void setTreatmentPlan(TreatmentPlan treatmentPlan) {
+        this.treatmentPlan = treatmentPlan;
+    }
+
+    public BigDecimal getPlatformFeePercentageApplied() {
+        return platformFeePercentageApplied;
+    }
+
+    public void setPlatformFeePercentageApplied(BigDecimal platformFeePercentageApplied) {
+        this.platformFeePercentageApplied = platformFeePercentageApplied;
+    }
+
+    public BigDecimal getPlatformFeeAmount() {
+        return platformFeeAmount;
+    }
+
+    public void setPlatformFeeAmount(BigDecimal platformFeeAmount) {
+        this.platformFeeAmount = platformFeeAmount;
+    }
+
+    public BigDecimal getNetAmountStored() {
+        return netAmount;
+    }
+
+    public void setNetAmount(BigDecimal netAmount) {
+        this.netAmount = netAmount;
     }
 
     public PaymentMethod getPaymentMethod() {
@@ -300,6 +380,9 @@ public class Consultation {
     }
 
     public BigDecimal getOmnicareFee() {
+        if (platformFeeAmount != null) {
+            return platformFeeAmount;
+        }
         if (fee == null) {
             return BigDecimal.ZERO;
         }
@@ -307,6 +390,9 @@ public class Consultation {
     }
 
     public BigDecimal getNetAmount() {
+        if (netAmount != null) {
+            return netAmount;
+        }
         if (fee == null) {
             return BigDecimal.ZERO;
         }

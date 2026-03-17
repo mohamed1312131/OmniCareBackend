@@ -25,6 +25,10 @@ public class PatientChronicCondition {
     @JoinColumn(name = "patient_id", nullable = false)
     private Patient patient;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "condition_id")
+    private ChronicConditionCatalog condition;
+
     @Column(name = "name", nullable = false)
     private String name;
 
@@ -52,6 +56,14 @@ public class PatientChronicCondition {
 
     public Patient getPatient() {
         return patient;
+    }
+
+    public ChronicConditionCatalog getCondition() {
+        return condition;
+    }
+
+    public void setCondition(ChronicConditionCatalog condition) {
+        this.condition = condition;
     }
 
     public String getName() {

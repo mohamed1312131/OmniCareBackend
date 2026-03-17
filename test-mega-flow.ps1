@@ -1,7 +1,8 @@
 param(
   [string]$BaseUrl = "http://localhost:8080",
   [securestring]$Password = (ConvertTo-SecureString "password" -AsPlainText -Force),
-  [int]$FamilyMembersCount = 2
+  [int]$FamilyMembersCount = 2,
+  [switch]$RunMegaSeed
 )
 
 $ErrorActionPreference = 'Stop'
@@ -109,6 +110,28 @@ if ($BaseUrl -notmatch '^https?://') {
 $PasswordPlain = ConvertFrom-SecureStringPlain $Password
 
 Write-Host "BaseUrl: $BaseUrl"
+
+if ($RunMegaSeed) {
+  Print-Step "DEV: Deep Mega-Seed"
+  $seed = Invoke-Api -Method POST -Path "/api/auth/dev/mega-seed" -Body @{}
+  Add-Result "dev.mega-seed" $seed.Ok $seed.Status ($seed.Raw -replace "\s+"," ")
+  if ($seed.Ok) {
+    Print-Step "MEGA-SEED RESPONSE"
+    Print-Json $seed.Json
+  }
+
+  Print-Step "RESULTS TABLE"
+  $results | Format-Table -AutoSize
+
+  $failed = $results | Where-Object { -not $_.Ok }
+  if ($failed -and $failed.Count -gt 0) {
+    Write-Host "\nFAILED: $($failed.Count) step(s)" -ForegroundColor Red
+    exit 1
+  }
+
+  Write-Host "\nALL TESTS PASSED" -ForegroundColor Green
+  exit 0
+}
 
 do {
   # ------------------------------------------------------------

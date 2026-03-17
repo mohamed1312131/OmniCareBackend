@@ -1,7 +1,9 @@
 package com.omnicare.patient.service;
 
 import com.omnicare.patient.model.Patient;
+import com.omnicare.patient.model.ChronicConditionCatalog;
 import com.omnicare.patient.model.PatientChronicCondition;
+import com.omnicare.patient.repository.ChronicConditionCatalogRepository;
 import com.omnicare.patient.repository.PatientChronicConditionRepository;
 import com.omnicare.patient.repository.PatientRepository;
 import com.omnicare.profile.model.User;
@@ -20,15 +22,17 @@ public class PatientChronicConditionService {
 
     private final PatientRepository patientRepository;
     private final PatientChronicConditionRepository patientChronicConditionRepository;
+    private final ChronicConditionCatalogRepository chronicConditionCatalogRepository;
     private final UserRepository userRepository;
 
-    public PatientChronicConditionService(PatientRepository patientRepository, PatientChronicConditionRepository patientChronicConditionRepository, UserRepository userRepository) {
+    public PatientChronicConditionService(PatientRepository patientRepository, PatientChronicConditionRepository patientChronicConditionRepository, ChronicConditionCatalogRepository chronicConditionCatalogRepository, UserRepository userRepository) {
         this.patientRepository = patientRepository;
         this.patientChronicConditionRepository = patientChronicConditionRepository;
+        this.chronicConditionCatalogRepository = chronicConditionCatalogRepository;
         this.userRepository = userRepository;
     }
 
-    public record CreateRequest(String name, String notes) {
+    public record CreateRequest(UUID conditionId, String name, String notes) {
     }
 
     public List<PatientChronicCondition> listForOwner(UUID ownerUserId, UUID patientId) {
@@ -39,19 +43,34 @@ public class PatientChronicConditionService {
 
     @Transactional
     public PatientChronicCondition addForOwner(UUID ownerUserId, UUID patientId, String createdByEmail, CreateRequest request) {
-        if (request == null || request.name() == null || request.name().isBlank()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "name is required");
+        if (request == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "request is required");
+        }
+        boolean hasConditionId = request.conditionId() != null;
+        boolean hasName = request.name() != null && !request.name().isBlank();
+        if (!hasConditionId && !hasName) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "conditionId or name is required");
         }
 
         Patient patient = patientRepository.findByIdAndOwnerUserId(patientId, ownerUserId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Patient not found"));
 
-        String name = request.name().trim();
-        if (patientChronicConditionRepository.existsByPatientIdAndNameIgnoreCase(patient.getId(), name)) {
+        ChronicConditionCatalog catalog = null;
+        String finalName;
+        if (hasConditionId) {
+            catalog = chronicConditionCatalogRepository.findById(request.conditionId())
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid conditionId"));
+            finalName = catalog.getName();
+        } else {
+            finalName = request.name().trim();
+        }
+
+        if (patientChronicConditionRepository.existsByPatientIdAndNameIgnoreCase(patient.getId(), finalName)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Condition already exists");
         }
 
-        PatientChronicCondition cc = new PatientChronicCondition(patient, name);
+        PatientChronicCondition cc = new PatientChronicCondition(patient, finalName);
+        cc.setCondition(catalog);
         if (request.notes() != null && !request.notes().isBlank()) {
             cc.setNotes(request.notes().trim());
         }

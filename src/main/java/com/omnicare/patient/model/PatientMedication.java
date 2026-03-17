@@ -31,6 +31,12 @@ public class PatientMedication {
     @JoinColumn(name = "medication_id", nullable = false)
     private Medication medication;
 
+    @Column(name = "source_prescription_id")
+    private UUID sourcePrescriptionId;
+
+    @Column(name = "source_prescription_item_id")
+    private UUID sourcePrescriptionItemId;
+
     @Column(name = "times_per_day")
     private Integer timesPerDay;
 
@@ -71,6 +77,22 @@ public class PatientMedication {
 
     public Medication getMedication() {
         return medication;
+    }
+
+    public UUID getSourcePrescriptionId() {
+        return sourcePrescriptionId;
+    }
+
+    public void setSourcePrescriptionId(UUID sourcePrescriptionId) {
+        this.sourcePrescriptionId = sourcePrescriptionId;
+    }
+
+    public UUID getSourcePrescriptionItemId() {
+        return sourcePrescriptionItemId;
+    }
+
+    public void setSourcePrescriptionItemId(UUID sourcePrescriptionItemId) {
+        this.sourcePrescriptionItemId = sourcePrescriptionItemId;
     }
 
     public Integer getTimesPerDay() {

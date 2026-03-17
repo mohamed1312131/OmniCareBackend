@@ -43,6 +43,9 @@ public class Provider {
     @Column(name = "rating", nullable = false)
     private BigDecimal rating = new BigDecimal("5.0");
 
+    @Column(name = "platform_fee_percentage", precision = 5, scale = 2)
+    private BigDecimal platformFeePercentage;
+
     protected Provider() {
     }
 
@@ -103,5 +106,13 @@ public class Provider {
         if (rating != null) {
             this.rating = rating;
         }
+    }
+
+    public BigDecimal getPlatformFeePercentage() {
+        return platformFeePercentage;
+    }
+
+    public void setPlatformFeePercentage(BigDecimal platformFeePercentage) {
+        this.platformFeePercentage = platformFeePercentage;
     }
 }

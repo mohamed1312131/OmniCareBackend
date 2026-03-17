@@ -3,7 +3,9 @@ package com.omnicare.prescription.service;
 import com.omnicare.medication.Medication;
 import com.omnicare.medication.MedicationRepository;
 import com.omnicare.patient.model.Patient;
+import com.omnicare.patient.repository.PatientAllergyRepository;
 import com.omnicare.patient.repository.PatientRepository;
+import com.omnicare.patient.service.PatientMedicationService;
 import com.omnicare.profile.model.User;
 import com.omnicare.profile.repository.UserRepository;
 import com.omnicare.prescription.model.Prescription;
@@ -20,9 +22,12 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigDecimal;
+import java.text.Normalizer;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 @Service
@@ -30,18 +35,22 @@ public class PrescriptionService {
 
     private final PrescriptionRepository prescriptionRepository;
     private final PatientRepository patientRepository;
+    private final PatientAllergyRepository patientAllergyRepository;
     private final MedicationRepository medicationRepository;
     private final UserRepository userRepository;
     private final ConsultationRepository consultationRepository;
     private final AuditLogService auditLogService;
+    private final PatientMedicationService patientMedicationService;
 
-    public PrescriptionService(PrescriptionRepository prescriptionRepository, PatientRepository patientRepository, MedicationRepository medicationRepository, UserRepository userRepository, ConsultationRepository consultationRepository, AuditLogService auditLogService) {
+    public PrescriptionService(PrescriptionRepository prescriptionRepository, PatientRepository patientRepository, PatientAllergyRepository patientAllergyRepository, MedicationRepository medicationRepository, UserRepository userRepository, ConsultationRepository consultationRepository, AuditLogService auditLogService, PatientMedicationService patientMedicationService) {
         this.prescriptionRepository = prescriptionRepository;
         this.patientRepository = patientRepository;
+        this.patientAllergyRepository = patientAllergyRepository;
         this.medicationRepository = medicationRepository;
         this.userRepository = userRepository;
         this.consultationRepository = consultationRepository;
         this.auditLogService = auditLogService;
+        this.patientMedicationService = patientMedicationService;
     }
 
     public record CreateItemRequest(
@@ -82,13 +91,15 @@ public class PrescriptionService {
 
         List<CreateItemRequest> items = request.items();
         if (items != null) {
+            Set<String> allergySubstances = getNormalizedAllergySubstances(patient.getId());
             for (CreateItemRequest it : items) {
-                p.addItem(toItemOrThrow(it));
+                p.addItem(toItemOrThrow(allergySubstances, it));
             }
         }
 
         Prescription saved = prescriptionRepository.save(p);
         auditLogService.log(doctor, AuditEntityType.PRESCRIPTION, saved.getId(), AuditLogAction.CREATE, null);
+        patientMedicationService.syncFromPrescription(saved, doctor);
         return saved;
     }
 
@@ -125,9 +136,10 @@ public class PrescriptionService {
                 p.setNotes(request.notes());
             }
             if (request.items() != null) {
+                Set<String> allergySubstances = getNormalizedAllergySubstances(c.getPatient().getId());
                 p.clearItems();
                 for (CreateItemRequest it : request.items()) {
-                    p.addItem(toItemOrThrow(it));
+                    p.addItem(toItemOrThrow(allergySubstances, it));
                 }
             }
         }
@@ -141,6 +153,7 @@ public class PrescriptionService {
         } else {
             auditLogService.log(doctor, AuditEntityType.PRESCRIPTION, saved.getId(), AuditLogAction.UPDATE, null);
         }
+        patientMedicationService.syncFromPrescription(saved, doctor);
         return saved;
     }
 
@@ -169,9 +182,10 @@ public class PrescriptionService {
                 p.setNotes(request.notes());
             }
             if (request.items() != null) {
+                Set<String> allergySubstances = getNormalizedAllergySubstances(p.getPatient().getId());
                 p.clearItems();
                 for (CreateItemRequest it : request.items()) {
-                    p.addItem(toItemOrThrow(it));
+                    p.addItem(toItemOrThrow(allergySubstances, it));
                 }
             }
         }
@@ -179,6 +193,7 @@ public class PrescriptionService {
         p.setPrescriberUser(doctor);
         Prescription saved = prescriptionRepository.save(p);
         auditLogService.log(doctor, AuditEntityType.PRESCRIPTION, saved.getId(), AuditLogAction.UPDATE, null);
+        patientMedicationService.syncFromPrescription(saved, doctor);
         return saved;
     }
 
@@ -194,7 +209,7 @@ public class PrescriptionService {
         return prescriptionRepository.findAllByPatientIdOrderByIssuedAtDesc(patientId);
     }
 
-    private PrescriptionItem toItemOrThrow(CreateItemRequest it) {
+    private PrescriptionItem toItemOrThrow(Set<String> normalizedAllergySubstances, CreateItemRequest it) {
         if (it == null || it.medicationId() == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "medicationId is required");
         }
@@ -215,6 +230,16 @@ public class PrescriptionService {
         Medication med = medicationRepository.findById(it.medicationId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unknown medicationId"));
 
+        if (normalizedAllergySubstances != null && !normalizedAllergySubstances.isEmpty()) {
+            Set<String> matches = findAllergyMatches(normalizedAllergySubstances, med);
+            if (!matches.isEmpty()) {
+                throw new ResponseStatusException(
+                        HttpStatus.CONFLICT,
+                        "Prescription blocked: patient has allergy to ingredient(s): " + String.join(", ", matches)
+                );
+            }
+        }
+
         PrescriptionItem item = new PrescriptionItem(med, times, periodDays, durationDays);
 
         if (it.doseAmount() != null) {
@@ -231,5 +256,81 @@ public class PrescriptionService {
         }
 
         return item;
+    }
+
+    private static Set<String> findAllergyMatches(Set<String> normalizedAllergySubstances, Medication med) {
+        Set<String> textTokens = new HashSet<>();
+        textTokens.addAll(parseNormalizedSubstances(med == null ? null : med.getDci()));
+
+        String normalizedName = normalizeSubstance(med == null ? null : med.getName());
+        if (normalizedName != null && !normalizedName.isBlank()) {
+            for (String token : normalizedName.split("\\s+")) {
+                if (token != null && !token.isBlank()) {
+                    textTokens.add(token);
+                }
+            }
+        }
+
+        if (textTokens.isEmpty() || normalizedAllergySubstances == null || normalizedAllergySubstances.isEmpty()) {
+            return Set.of();
+        }
+
+        Set<String> matches = new HashSet<>();
+        for (String allergy : normalizedAllergySubstances) {
+            if (allergy == null || allergy.isBlank()) {
+                continue;
+            }
+
+            for (String token : textTokens) {
+                if (token == null || token.isBlank()) {
+                    continue;
+                }
+
+                if (token.equals(allergy) || token.startsWith(allergy) || allergy.startsWith(token) || token.contains(allergy) || allergy.contains(token)) {
+                    matches.add(allergy);
+                    break;
+                }
+            }
+        }
+        return matches;
+    }
+
+    private Set<String> getNormalizedAllergySubstances(UUID patientId) {
+        if (patientId == null) {
+            return Set.of();
+        }
+        return patientAllergyRepository.findAllByPatientIdOrderByRecordedAtDesc(patientId).stream()
+                .map(a -> normalizeSubstance(a.getSubstance()))
+                .filter(s -> s != null && !s.isBlank())
+                .collect(java.util.stream.Collectors.toSet());
+    }
+
+    private static String normalizeSubstance(String value) {
+        if (value == null) {
+            return null;
+        }
+        String s = value.trim().toLowerCase();
+        if (s.isEmpty()) {
+            return null;
+        }
+        s = Normalizer.normalize(s, Normalizer.Form.NFD);
+        s = s.replaceAll("\\p{M}+", "");
+        s = s.replaceAll("[^a-z0-9]+", " ").trim().replaceAll("\\s+", " ");
+        return s.isEmpty() ? null : s;
+    }
+
+    private static Set<String> parseNormalizedSubstances(String dci) {
+        String normalized = normalizeSubstance(dci);
+        if (normalized == null) {
+            return Set.of();
+        }
+        Set<String> out = new HashSet<>();
+        for (String token : normalized.split("\\s*(?:\\+|/|,|;|\\s+et\\s+)\\s*")) {
+            String t = normalizeSubstance(token);
+            if (t != null && !t.isBlank()) {
+                out.add(t);
+            }
+        }
+        return out;
     }
 }

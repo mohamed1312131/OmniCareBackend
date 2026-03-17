@@ -13,5 +13,11 @@ public interface PatientMedicationRepository extends JpaRepository<PatientMedica
 
     Optional<PatientMedication> findByIdAndPatientId(UUID id, UUID patientId);
 
+    Optional<PatientMedication> findByPatientIdAndMedicationId(UUID patientId, UUID medicationId);
+
+    Optional<PatientMedication> findByPatientIdAndSourcePrescriptionItemId(UUID patientId, UUID sourcePrescriptionItemId);
+
+    List<PatientMedication> findAllByPatientIdAndSourcePrescriptionId(UUID patientId, UUID sourcePrescriptionId);
+
     boolean existsByPatientIdAndMedicationId(UUID patientId, UUID medicationId);
 }
