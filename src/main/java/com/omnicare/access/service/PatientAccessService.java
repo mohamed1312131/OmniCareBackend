@@ -4,6 +4,8 @@ import com.omnicare.access.model.PatientProviderAccess;
 import com.omnicare.access.model.PatientShareToken;
 import com.omnicare.access.repository.PatientProviderAccessRepository;
 import com.omnicare.access.repository.PatientShareTokenRepository;
+import com.omnicare.doctor.model.ConsultationStatus;
+import com.omnicare.doctor.repository.ConsultationRepository;
 import com.omnicare.patient.model.Patient;
 import com.omnicare.patient.repository.PatientRepository;
 import com.omnicare.profile.model.User;
@@ -42,11 +44,7 @@ public class PatientAccessService {
         }
 
         Provider provider = providerService.ensureForProfessionalUser(providerUser);
-        return patientProviderAccessRepository.findAllActiveByProviderId(provider.getId()).stream()
-                .map(a -> a.getPatient() == null ? null : a.getPatient().getId())
-                .filter(id -> id != null)
-                .distinct()
-                .toList();
+        return patientProviderAccessRepository.findActivePatientIdsByProviderId(provider.getId());
     }
 
     @Transactional
@@ -83,17 +81,20 @@ public class PatientAccessService {
     private final PatientShareTokenRepository patientShareTokenRepository;
     private final PatientProviderAccessRepository patientProviderAccessRepository;
     private final ProviderService providerService;
+    private final ConsultationRepository consultationRepository;
 
     public PatientAccessService(
             PatientRepository patientRepository,
             PatientShareTokenRepository patientShareTokenRepository,
             PatientProviderAccessRepository patientProviderAccessRepository,
-            ProviderService providerService
+            ProviderService providerService,
+            ConsultationRepository consultationRepository
     ) {
         this.patientRepository = patientRepository;
         this.patientShareTokenRepository = patientShareTokenRepository;
         this.patientProviderAccessRepository = patientProviderAccessRepository;
         this.providerService = providerService;
+        this.consultationRepository = consultationRepository;
     }
 
     @Transactional
@@ -179,7 +180,21 @@ public class PatientAccessService {
 
         Provider provider = providerService.ensureForProfessionalUser(actor);
         PatientProviderAccess access = patientProviderAccessRepository.findActiveByPatientIdAndProviderId(patientId, provider.getId())
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN, "No access to patient"));
+                .orElse(null);
+
+        if (access == null) {
+            if (scope == Scope.PASSPORT_READ) {
+                boolean hasConsultation = consultationRepository.existsByProviderIdAndPatientIdAndStatusIn(
+                        provider.getId(),
+                        patientId,
+                        List.of(ConsultationStatus.PENDING, ConsultationStatus.ACCEPTED, ConsultationStatus.COMPLETED)
+                );
+                if (hasConsultation) {
+                    return;
+                }
+            }
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "No access to patient");
+        }
 
         boolean ok = switch (scope) {
             case PASSPORT_READ -> access.isCanReadPassport();

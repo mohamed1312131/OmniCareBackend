@@ -7,7 +7,11 @@ import org.springframework.boot.ApplicationRunner;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 
 @Component
 public class BodyPartCatalogSeeder implements ApplicationRunner {
@@ -22,6 +26,12 @@ public class BodyPartCatalogSeeder implements ApplicationRunner {
     @Transactional
     public void run(ApplicationArguments args) {
         // Synced with OmniCareFrontend muscleParts keys.
+        final Map<String, BodyPartCatalog> existingByKeyLower = new HashMap<>();
+        for (BodyPartCatalog row : bodyPartCatalogRepository.findAll()) {
+            if (row.getKey() == null) continue;
+            existingByKeyLower.put(row.getKey().trim().toLowerCase(Locale.ROOT), row);
+        }
+
         List<String> keys = List.of(
                 "front-head",
                 "front-neck",
@@ -79,16 +89,31 @@ public class BodyPartCatalogSeeder implements ApplicationRunner {
                 "back-foot-right"
         );
 
+        final List<BodyPartCatalog> toSave = new ArrayList<>();
+
         for (String key : keys) {
             if (key == null || key.isBlank()) {
                 continue;
             }
-            String trimmed = key.trim();
-            bodyPartCatalogRepository.findByKeyIgnoreCase(trimmed)
-                    .ifPresentOrElse(existing -> {
-                        existing.setActive(true);
-                        bodyPartCatalogRepository.save(existing);
-                    }, () -> bodyPartCatalogRepository.save(new BodyPartCatalog(trimmed)));
+            final String trimmed = key.trim();
+            final String lowered = trimmed.toLowerCase(Locale.ROOT);
+
+            final BodyPartCatalog existing = existingByKeyLower.get(lowered);
+            if (existing != null) {
+                if (!existing.isActive()) {
+                    existing.setActive(true);
+                    toSave.add(existing);
+                }
+                continue;
+            }
+
+            final BodyPartCatalog created = new BodyPartCatalog(trimmed);
+            existingByKeyLower.put(lowered, created);
+            toSave.add(created);
+        }
+
+        if (!toSave.isEmpty()) {
+            bodyPartCatalogRepository.saveAll(toSave);
         }
     }
 }

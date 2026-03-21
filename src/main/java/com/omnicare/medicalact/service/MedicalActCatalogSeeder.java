@@ -9,12 +9,18 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
+import java.util.Set;
 
 @Component
 public class MedicalActCatalogSeeder implements ApplicationRunner {
 
     private final MedicalActCatalogRepository medicalActCatalogRepository;
+
+    private final Set<String> existingCodesLower = new HashSet<>();
 
     public MedicalActCatalogSeeder(MedicalActCatalogRepository medicalActCatalogRepository) {
         this.medicalActCatalogRepository = medicalActCatalogRepository;
@@ -23,6 +29,12 @@ public class MedicalActCatalogSeeder implements ApplicationRunner {
     @Override
     @Transactional
     public void run(ApplicationArguments args) {
+        existingCodesLower.clear();
+        for (MedicalActCatalog row : medicalActCatalogRepository.findAll()) {
+            if (row.getCode() == null) continue;
+            existingCodesLower.add(row.getCode().trim().toLowerCase(Locale.ROOT));
+        }
+
         seedNurseCatalog();
         seedKineCatalog();
     }
@@ -42,7 +54,7 @@ public class MedicalActCatalogSeeder implements ApplicationRunner {
                 new MedicalActCatalog("NURSE_OTHER_COMPLEX_CARE", "Other / Complex Care", new BigDecimal("0.00"), 30, ProviderType.NURSE)
         );
 
-        upsertByCode(nurse);
+        insertMissingByCode(nurse);
     }
 
     private void seedKineCatalog() {
@@ -54,20 +66,25 @@ public class MedicalActCatalogSeeder implements ApplicationRunner {
                 new MedicalActCatalog("KINE_POST_TRAUMATIC_MOB", "Post-Traumatic Mobilization", new BigDecimal("23.00"), 40, ProviderType.KINE)
         );
 
-        upsertByCode(kine);
+        insertMissingByCode(kine);
     }
 
-    private void upsertByCode(List<MedicalActCatalog> acts) {
+    private void insertMissingByCode(List<MedicalActCatalog> acts) {
+        final List<MedicalActCatalog> toInsert = new ArrayList<>();
         for (MedicalActCatalog incoming : acts) {
-            medicalActCatalogRepository.findByCodeIgnoreCase(incoming.getCode())
-                    .ifPresentOrElse(existing -> {
-                        existing.setName(incoming.getName());
-                        existing.setBasePrice(incoming.getBasePrice());
-                        existing.setEstimatedDurationMinutes(incoming.getEstimatedDurationMinutes());
-                        existing.setProviderType(incoming.getProviderType());
-                        existing.setActive(true);
-                        medicalActCatalogRepository.save(existing);
-                    }, () -> medicalActCatalogRepository.save(incoming));
+            if (incoming == null || incoming.getCode() == null || incoming.getCode().isBlank()) {
+                continue;
+            }
+            final String codeLower = incoming.getCode().trim().toLowerCase(Locale.ROOT);
+            if (existingCodesLower.contains(codeLower)) {
+                continue;
+            }
+            existingCodesLower.add(codeLower);
+            toInsert.add(incoming);
+        }
+
+        if (!toInsert.isEmpty()) {
+            medicalActCatalogRepository.saveAll(toInsert);
         }
     }
 }

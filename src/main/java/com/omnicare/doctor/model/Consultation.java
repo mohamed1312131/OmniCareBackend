@@ -16,6 +16,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import org.hibernate.annotations.BatchSize;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -109,6 +110,7 @@ public class Consultation {
     @Column(name = "pain_level")
     private Integer painLevel;
 
+    @BatchSize(size = 20)
     @ElementCollection
     @CollectionTable(name = "consultation_affected_areas", joinColumns = @JoinColumn(name = "consultation_id"))
     @Column(name = "area", nullable = false)

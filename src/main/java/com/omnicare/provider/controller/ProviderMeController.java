@@ -1,12 +1,10 @@
 package com.omnicare.provider.controller;
 
 import com.omnicare.access.service.PatientAccessService;
-import com.omnicare.doctor.controller.ConsultationController;
-import com.omnicare.doctor.model.Consultation;
+import com.omnicare.doctor.dto.ConsultationSummaryDTO;
 import com.omnicare.doctor.model.ConsultationStatus;
 import com.omnicare.doctor.repository.ConsultationRepository;
 import com.omnicare.patient.controller.PatientController;
-import com.omnicare.patient.model.Patient;
 import com.omnicare.patient.repository.PatientRepository;
 import com.omnicare.profile.model.User;
 import com.omnicare.profile.model.UserRole;
@@ -25,6 +23,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.util.Objects;
 import java.util.List;
 import java.util.UUID;
 
@@ -74,9 +73,12 @@ public class ProviderMeController {
 
     @GetMapping("/consultations")
     @Transactional(readOnly = true)
-    public List<ConsultationController.ConsultationFlowResponse> listMyConsultations(
+    public List<ConsultationSummaryDTO> listMyConsultations(
             Authentication authentication,
-            @RequestParam(value = "status", required = false) ConsultationStatus status
+            @RequestParam(value = "status", required = false) ConsultationStatus status,
+            @RequestParam(value = "lat", required = false) Double lat,
+            @RequestParam(value = "lng", required = false) Double lng,
+            @RequestParam(value = "radiusKm", required = false) Double radiusKm
     ) {
         User actor = requireUser(authentication);
         if (!ProviderService.isProfessionalRole(actor.getRole()) || actor.getRole() == UserRole.ADMIN) {
@@ -84,20 +86,46 @@ public class ProviderMeController {
         }
 
         Provider provider = providerService.ensureForProfessionalUser(actor);
-        List<Consultation> rows = (status == null)
-                ? consultationRepository.findAllByProviderIdOrderByTimestampDesc(provider.getId())
-                : consultationRepository.findAllByProviderIdAndStatusOrderByTimestampDesc(provider.getId(), status);
 
-        return rows.stream()
-                .filter(c -> {
-                    if (c == null || c.getPatient() == null || c.getPatient().getId() == null) {
-                        return false;
-                    }
-                    patientAccessService.requireProviderAccess(actor, c.getPatient().getId(), PatientAccessService.Scope.CONSULTATIONS_READ);
-                    return true;
-                })
-                .map(c -> ConsultationController.ConsultationFlowResponse.from(c, null))
-                .toList();
+        final ConsultationStatus effectiveStatus = (status == null) ? ConsultationStatus.PENDING : status;
+
+        final Double effectiveRadiusKm;
+        if (radiusKm != null && radiusKm > 0) {
+            effectiveRadiusKm = radiusKm;
+        } else if (provider.getServiceRadiusKm() != null && provider.getServiceRadiusKm() > 0) {
+            effectiveRadiusKm = provider.getServiceRadiusKm().doubleValue();
+        } else {
+            effectiveRadiusKm = null;
+        }
+
+        final boolean geoEnabled = (lat != null && lng != null && effectiveRadiusKm != null);
+        if (geoEnabled) {
+            final double centerLat = lat;
+            final double centerLng = lng;
+            final double rKm = effectiveRadiusKm;
+
+            return consultationRepository
+                    .findSummaryRowsByProviderIdAndStatusOrderByTimestampDesc(provider.getId(), effectiveStatus)
+                    .stream()
+                    .filter(Objects::nonNull)
+                    .filter(row -> row.latitude() != null && row.longitude() != null)
+                    .filter(row -> distanceKm(centerLat, centerLng, row.latitude(), row.longitude()) <= rKm)
+                    .map(ConsultationRepository.ConsultationSummaryRow::toDto)
+                    .toList();
+        }
+
+        return consultationRepository.findSummariesByProviderIdAndStatusOrderByTimestampDesc(provider.getId(), effectiveStatus);
+    }
+
+    private static double distanceKm(double lat1, double lon1, double lat2, double lon2) {
+        final double R = 6371.0088;
+        final double dLat = Math.toRadians(lat2 - lat1);
+        final double dLon = Math.toRadians(lon2 - lon1);
+        final double a = Math.sin(dLat / 2) * Math.sin(dLat / 2)
+                + Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2))
+                * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+        final double c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        return R * c;
     }
 
     @GetMapping("/patients")
@@ -113,9 +141,7 @@ public class ProviderMeController {
             return List.of();
         }
 
-        return patientIds.stream()
-                .map(id -> patientRepository.findById(id).orElse(null))
-                .filter(p -> p != null)
+        return patientRepository.findAllByIdInWithIdentity(patientIds).stream()
                 .map(PatientController.PatientSummary::from)
                 .toList();
     }

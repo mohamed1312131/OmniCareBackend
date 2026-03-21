@@ -8,6 +8,9 @@ import com.omnicare.patient.model.PatientChronicCondition;
 import com.omnicare.patient.model.PatientMedication;
 import com.omnicare.patient.model.PatientType;
 import com.omnicare.patient.repository.PatientRepository;
+import com.omnicare.patient.repository.PatientAllergyRepository;
+import com.omnicare.patient.repository.PatientChronicConditionRepository;
+import com.omnicare.patient.repository.PatientMedicationRepository;
 import com.omnicare.patient.service.PatientAllergyService;
 import com.omnicare.patient.service.PatientChronicConditionService;
 import com.omnicare.patient.service.PatientMedicationService;
@@ -20,6 +23,10 @@ import com.omnicare.profile.repository.UserRepository;
 import com.omnicare.access.service.PatientAccessService;
 import com.omnicare.access.service.PatientAccessService.Scope;
 import com.omnicare.provider.service.ProviderService;
+import com.omnicare.doctor.model.Consultation;
+import com.omnicare.doctor.repository.ConsultationRepository;
+import com.omnicare.document.MedicalDocument;
+import com.omnicare.document.MedicalDocumentRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.oauth2.jwt.Jwt;
@@ -35,6 +42,8 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDate;
+import java.time.Period;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -55,6 +64,12 @@ public class PatientController {
     private final PatientChronicConditionService patientChronicConditionService;
     private final PatientAccessService patientAccessService;
 
+    private final PatientAllergyRepository patientAllergyRepository;
+    private final PatientMedicationRepository patientMedicationRepository;
+    private final PatientChronicConditionRepository patientChronicConditionRepository;
+    private final ConsultationRepository consultationRepository;
+    private final MedicalDocumentRepository medicalDocumentRepository;
+
     public PatientController(
             PatientRepository patientRepository,
             FamilyMemberRepository familyMemberRepository,
@@ -64,7 +79,12 @@ public class PatientController {
             PatientAllergyService patientAllergyService,
             PatientMedicationService patientMedicationService,
             PatientChronicConditionService patientChronicConditionService,
-            PatientAccessService patientAccessService
+            PatientAccessService patientAccessService,
+            PatientAllergyRepository patientAllergyRepository,
+            PatientMedicationRepository patientMedicationRepository,
+            PatientChronicConditionRepository patientChronicConditionRepository,
+            ConsultationRepository consultationRepository,
+            MedicalDocumentRepository medicalDocumentRepository
     ) {
         this.patientRepository = patientRepository;
         this.familyMemberRepository = familyMemberRepository;
@@ -75,6 +95,12 @@ public class PatientController {
         this.patientMedicationService = patientMedicationService;
         this.patientChronicConditionService = patientChronicConditionService;
         this.patientAccessService = patientAccessService;
+
+        this.patientAllergyRepository = patientAllergyRepository;
+        this.patientMedicationRepository = patientMedicationRepository;
+        this.patientChronicConditionRepository = patientChronicConditionRepository;
+        this.consultationRepository = consultationRepository;
+        this.medicalDocumentRepository = medicalDocumentRepository;
     }
 
     public record PatientSummary(UUID patientId, PatientType type, String displayName, UUID userId, UUID familyMemberId) {
@@ -99,46 +125,165 @@ public class PatientController {
             UUID patientId,
             PatientType type,
             String displayName,
+            String fullName,
+            String relationship,
             String phoneNumber,
             LocalDate dateOfBirth,
+            Integer age,
+            Double height,
+            Double weight,
             String gender,
             BloodGroup bloodGroup,
-            Map<String, Object> medicalInfo
+            Map<String, Object> medicalInfo,
+            List<String> chronicDiseases,
+            List<String> allergies,
+            List<PatientMedicationSummary> currentMedicines,
+            List<ConsultationSummary> pastConsultations,
+            List<MedicalDocumentSummary> medicalDocuments
     ) {
-        static PatientPassportResponse from(Patient p) {
+        static PatientPassportResponse from(
+                Patient p,
+                PatientAllergyRepository patientAllergyRepository,
+                PatientMedicationRepository patientMedicationRepository,
+                PatientChronicConditionRepository patientChronicConditionRepository,
+                ConsultationRepository consultationRepository,
+                MedicalDocumentRepository medicalDocumentRepository
+        ) {
             String displayName;
+            String fullName;
+            String relationship = null;
             String phoneNumber = null;
             LocalDate dateOfBirth = null;
             String gender = null;
             BloodGroup bloodGroup = null;
             Map<String, Object> medicalInfo = null;
+            UUID ownerUserId = null;
 
             if (p.getType() == PatientType.USER && p.getUser() != null) {
                 displayName = p.getUser().getName();
+                fullName = p.getUser().getName();
+                relationship = "SELF";
                 phoneNumber = p.getUser().getPhoneNumber();
                 dateOfBirth = p.getUser().getDateOfBirth();
                 gender = p.getUser().getGender();
                 bloodGroup = p.getUser().getBloodGroup();
                 medicalInfo = p.getUser().getMedicalInfo();
+                ownerUserId = p.getUser().getId();
             } else if (p.getFamilyMember() != null) {
                 displayName = p.getFamilyMember().getFullName();
+                fullName = p.getFamilyMember().getFullName();
+                relationship = p.getFamilyMember().getRelationship();
                 dateOfBirth = p.getFamilyMember().getBirthDate();
                 gender = p.getFamilyMember().getGender();
                 bloodGroup = p.getFamilyMember().getBloodGroup();
                 medicalInfo = p.getFamilyMember().getMedicalInfo();
+                if (p.getFamilyMember().getUser() != null) {
+                    ownerUserId = p.getFamilyMember().getUser().getId();
+                    phoneNumber = p.getFamilyMember().getUser().getPhoneNumber();
+                }
             } else {
                 displayName = "Unknown";
+                fullName = "Unknown";
             }
+
+            Integer age = computeAge(dateOfBirth);
+            Double height = readDoubleFromMedicalInfo(medicalInfo, "height");
+            Double weight = readDoubleFromMedicalInfo(medicalInfo, "weight");
+
+            List<String> allergies = patientAllergyRepository.findAllByPatientIdOrderByRecordedAtDesc(p.getId()).stream()
+                    .map(a -> a == null ? null : a.getSubstance())
+                    .filter(v -> v != null && !v.isBlank())
+                    .map(String::trim)
+                    .distinct()
+                    .toList();
+
+            List<String> chronicDiseases = patientChronicConditionRepository.findAllByPatientIdOrderByRecordedAtDesc(p.getId()).stream()
+                    .map(cc -> cc == null ? null : cc.getName())
+                    .filter(v -> v != null && !v.isBlank())
+                    .map(String::trim)
+                    .distinct()
+                    .toList();
+
+            List<PatientMedicationSummary> medicines = patientMedicationRepository.findAllByPatientIdOrderByRecordedAtDesc(p.getId()).stream()
+                    .map(PatientMedicationSummary::from)
+                    .toList();
+
+            List<ConsultationSummary> pastConsultations = consultationRepository.findAllByPatientIdOrderByTimestampDesc(p.getId()).stream()
+                    .map(ConsultationSummary::from)
+                    .toList();
+
+            List<MedicalDocumentSummary> medicalDocuments = ownerUserId == null
+                    ? List.of()
+                    : medicalDocumentRepository.findAllByOwnerUserIdOrderByCreatedAtDesc(ownerUserId).stream()
+                            .map(MedicalDocumentSummary::from)
+                            .toList();
 
             return new PatientPassportResponse(
                     p.getId(),
                     p.getType(),
                     displayName,
+                    fullName,
+                    relationship,
                     phoneNumber,
                     dateOfBirth,
+                    age,
+                    height,
+                    weight,
                     gender,
                     bloodGroup,
-                    medicalInfo
+                    medicalInfo,
+                    chronicDiseases,
+                    allergies,
+                    medicines,
+                    pastConsultations,
+                    medicalDocuments
+            );
+        }
+    }
+
+    public record PatientMedicationSummary(UUID id, UUID medicationId, String name, String dosage, String frequency, String notes) {
+        static PatientMedicationSummary from(PatientMedication pm) {
+            if (pm == null) {
+                return null;
+            }
+            return new PatientMedicationSummary(
+                    pm.getId(),
+                    pm.getMedication() != null ? pm.getMedication().getId() : null,
+                    pm.getMedication() != null ? pm.getMedication().getName() : null,
+                    pm.getMedication() != null ? pm.getMedication().getDosage() : null,
+                    pm.getFrequency(),
+                    pm.getNotes()
+            );
+        }
+    }
+
+    public record ConsultationSummary(UUID id, String status, Object timestamp, String diagnosis, String treatment, Object fee) {
+        static ConsultationSummary from(Consultation c) {
+            if (c == null) {
+                return null;
+            }
+            return new ConsultationSummary(
+                    c.getId(),
+                    c.getStatus() == null ? null : c.getStatus().name(),
+                    c.getTimestamp(),
+                    c.getDiagnosis(),
+                    c.getTreatment(),
+                    c.getFee()
+            );
+        }
+    }
+
+    public record MedicalDocumentSummary(UUID id, String title, Object type, LocalDate issueDate, String fileUrl) {
+        static MedicalDocumentSummary from(MedicalDocument doc) {
+            if (doc == null) {
+                return null;
+            }
+            return new MedicalDocumentSummary(
+                    doc.getId(),
+                    doc.getTitle(),
+                    doc.getType(),
+                    doc.getIssueDate(),
+                    doc.getFileUrl()
             );
         }
     }
@@ -170,9 +315,7 @@ public class PatientController {
             return List.of();
         }
 
-        return patientIds.stream()
-                .map(id -> patientRepository.findById(id).orElse(null))
-                .filter(p -> p != null)
+        return patientRepository.findAllByIdInWithIdentity(patientIds).stream()
                 .map(PatientSummary::from)
                 .toList();
     }
@@ -192,7 +335,51 @@ public class PatientController {
         Patient p = patientRepository.findById(patientId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Patient not found"));
 
-        return PatientPassportResponse.from(p);
+        return PatientPassportResponse.from(
+                p,
+                patientAllergyRepository,
+                patientMedicationRepository,
+                patientChronicConditionRepository,
+                consultationRepository,
+                medicalDocumentRepository
+        );
+    }
+
+    private static Integer computeAge(LocalDate dob) {
+        if (dob == null) {
+            return null;
+        }
+        LocalDate today = LocalDate.now(ZoneId.systemDefault());
+        if (dob.isAfter(today)) {
+            return null;
+        }
+        int years = Period.between(dob, today).getYears();
+        if (years < 0 || years > 140) {
+            return null;
+        }
+        return years;
+    }
+
+    private static Double readDoubleFromMedicalInfo(Map<String, Object> medicalInfo, String key) {
+        if (medicalInfo == null || key == null) {
+            return null;
+        }
+        Object raw = medicalInfo.get(key);
+        if (raw instanceof Number n) {
+            return n.doubleValue();
+        }
+        if (raw instanceof String s) {
+            try {
+                String trimmed = s.trim();
+                if (trimmed.isEmpty()) {
+                    return null;
+                }
+                return Double.parseDouble(trimmed);
+            } catch (NumberFormatException ignored) {
+                return null;
+            }
+        }
+        return null;
     }
 
     private static Map<String, Object> sanitizeMedicalInfo(Map<String, Object> medicalInfo) {
@@ -216,7 +403,14 @@ public class PatientController {
 
         Patient p = patientRepository.findByIdAndOwnerUserId(patientId, owner.getId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Patient not found"));
-        return PatientPassportResponse.from(p);
+        return PatientPassportResponse.from(
+                p,
+                patientAllergyRepository,
+                patientMedicationRepository,
+                patientChronicConditionRepository,
+                consultationRepository,
+                medicalDocumentRepository
+        );
     }
 
     @PostMapping("/{patientId}/medical-passport")
@@ -250,7 +444,14 @@ public class PatientController {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Patient has no subject");
         }
 
-        return PatientPassportResponse.from(p);
+        return PatientPassportResponse.from(
+                p,
+                patientAllergyRepository,
+                patientMedicationRepository,
+                patientChronicConditionRepository,
+                consultationRepository,
+                medicalDocumentRepository
+        );
     }
 
     @GetMapping("/{patientId}/allergies")

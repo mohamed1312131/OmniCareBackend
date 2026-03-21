@@ -14,11 +14,13 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.OneToOne;
 import jakarta.persistence.Table;
+import org.hibernate.annotations.BatchSize;
 
 import java.util.UUID;
 
 @Entity
 @Table(name = "patients")
+@BatchSize(size = 20)
 public class Patient {
 
     @Id

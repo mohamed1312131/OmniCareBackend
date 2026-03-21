@@ -36,6 +36,10 @@ import com.omnicare.profile.model.UserRole;
 import com.omnicare.profile.model.User;
 import com.omnicare.profile.repository.UserRepository;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.oauth2.jwt.Jwt;
@@ -46,6 +50,9 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.Period;
+import java.util.Map;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -55,6 +62,8 @@ import java.util.UUID;
 @RestController
 @RequestMapping("/api/consultations")
 public class ConsultationController {
+
+    private static final Logger log = LoggerFactory.getLogger(ConsultationController.class);
 
     private final UserRepository userRepository;
     private final DoctorService doctorService;
@@ -127,6 +136,7 @@ public class ConsultationController {
                         patientAccessService.requireProviderAccess(actor, c.getPatient().getId(), Scope.CONSULTATIONS_READ);
                         return true;
                     })
+                    .peek(consultationFinancialService::apply)
                     .map(c -> ConsultationFlowResponse.from(c, computeAllergyWarning(c)))
                     .toList();
         }
@@ -137,7 +147,10 @@ public class ConsultationController {
             if (status != null) {
                 rows = rows.stream().filter(c -> status == c.getStatus()).toList();
             }
-            return rows.stream().map(c -> ConsultationFlowResponse.from(c, computeAllergyWarning(c))).toList();
+            return rows.stream()
+                    .peek(consultationFinancialService::apply)
+                    .map(c -> ConsultationFlowResponse.from(c, computeAllergyWarning(c)))
+                    .toList();
         }
 
         throw new ResponseStatusException(HttpStatus.FORBIDDEN);
@@ -164,37 +177,49 @@ public class ConsultationController {
     ) {
     }
 
-    public record PatchConsultationRequest(ConsultationStatus status, ConsultationCancellationReason cancellationReason, String diagnosis, String treatment) {
+    public record PatchConsultationRequest(
+            ConsultationStatus status,
+            ConsultationCancellationReason cancellationReason,
+            String diagnosis,
+            String treatment,
+            java.math.BigDecimal fee
+    ) {
     }
 
     public record ConsultationFlowResponse(
-            UUID id,
-            UUID doctorId,
-            String doctorName,
-            String doctorSpecialty,
-            UUID providerId,
-            String providerType,
-            UUID patientId,
-            String patientName,
-            String symptoms,
-            String diagnosis,
-            String treatment,
-            ConsultationStatus status,
-            ConsultationCancellationReason cancellationReason,
-            Instant cancelledAt,
-            UUID cancelledByUserId,
-            Integer painLevel,
-            List<String> affectedAreas,
-            String streetAddress,
-            String apartmentSuite,
-            String city,
-            Double latitude,
-            Double longitude,
-            BigDecimal fee,
-            BigDecimal netAmount,
-            BigDecimal omnicareFee,
-            Instant timestamp,
-            String allergyWarning
+            @JsonProperty("id") UUID id,
+            @JsonProperty("doctor_id") UUID doctorId,
+            @JsonProperty("doctor_name") String doctorName,
+            @JsonProperty("doctor_specialty") String doctorSpecialty,
+            @JsonProperty("provider_id") UUID providerId,
+            @JsonProperty("provider_type") String providerType,
+            @JsonProperty("patient_id") UUID patientId,
+            @JsonProperty("patient_name") String patientName,
+            @JsonProperty("patient_age") Integer patientAge,
+            @JsonProperty("patient_gender") String patientGender,
+            @JsonProperty("height") Double height,
+            @JsonProperty("weight") Double weight,
+            @JsonProperty("blood_group") String bloodGroup,
+            @JsonProperty("relationship") String relationship,
+            @JsonProperty("symptoms") String symptoms,
+            @JsonProperty("diagnosis") String diagnosis,
+            @JsonProperty("treatment") String treatment,
+            @JsonProperty("status") ConsultationStatus status,
+            @JsonProperty("cancellation_reason") ConsultationCancellationReason cancellationReason,
+            @JsonProperty("cancelled_at") Instant cancelledAt,
+            @JsonProperty("cancelled_by_user_id") UUID cancelledByUserId,
+            @JsonProperty("pain_level") Integer painLevel,
+            @JsonProperty("affected_areas") List<String> affectedAreas,
+            @JsonProperty("street_address") String streetAddress,
+            @JsonProperty("apartment_suite") String apartmentSuite,
+            @JsonProperty("city") String city,
+            @JsonProperty("latitude") Double latitude,
+            @JsonProperty("longitude") Double longitude,
+            @JsonProperty("fee") BigDecimal fee,
+            @JsonProperty("net_amount") BigDecimal netAmount,
+            @JsonProperty("omnicare_fee") BigDecimal omnicareFee,
+            @JsonProperty("timestamp") Instant timestamp,
+            @JsonProperty("allergy_warning") String allergyWarning
     ) {
         public static ConsultationFlowResponse from(Consultation c, String allergyWarning) {
             List<String> affectedAreas = c.getAffectedAreas() == null ? List.of() : List.copyOf(c.getAffectedAreas());
@@ -217,14 +242,7 @@ public class ConsultationController {
                 }
             }
 
-            String patientName = null;
-            if (c.getPatient() != null) {
-                if (c.getPatient().getUser() != null) {
-                    patientName = c.getPatient().getUser().getName();
-                } else if (c.getPatient().getOwnerUser() != null) {
-                    patientName = c.getPatient().getOwnerUser().getName();
-                }
-            }
+            PatientDetails patientDetails = PatientDetails.from(c.getPatient());
 
             ConsultationCancellationReason cancellationReason = null;
             Instant cancelledAt = null;
@@ -244,8 +262,14 @@ public class ConsultationController {
                     doctorSpecialty,
                     providerId,
                     providerType,
-                    c.getPatient() == null ? null : c.getPatient().getId(),
-                    patientName,
+                    patientDetails.patientId(),
+                    patientDetails.patientName(),
+                    patientDetails.patientAge(),
+                    patientDetails.patientGender(),
+                    patientDetails.height(),
+                    patientDetails.weight(),
+                    patientDetails.bloodGroup(),
+                    patientDetails.relationship(),
                     c.getSymptoms(),
                     c.getDiagnosis(),
                     c.getTreatment(),
@@ -266,6 +290,78 @@ public class ConsultationController {
                     c.getTimestamp(),
                     allergyWarning
             );
+        }
+
+        private record PatientDetails(
+                UUID patientId,
+                String patientName,
+                Integer patientAge,
+                String patientGender,
+                Double height,
+                Double weight,
+                String bloodGroup,
+                String relationship
+        ) {
+            static PatientDetails from(Patient p) {
+                if (p == null) {
+                    return new PatientDetails(null, null, null, null, null, null, null, null);
+                }
+
+                UUID id = p.getId();
+                String name = null;
+                LocalDate dob = null;
+                String gender = null;
+                String blood = null;
+                Map<String, Object> medicalInfo = null;
+                String relationship = null;
+
+                if (p.getUser() != null) {
+                    name = p.getUser().getName();
+                    dob = p.getUser().getDateOfBirth();
+                    gender = p.getUser().getGender();
+                    blood = p.getUser().getBloodGroup() == null ? null : p.getUser().getBloodGroup().name();
+                    medicalInfo = p.getUser().getMedicalInfo();
+                    relationship = "SELF";
+                } else if (p.getFamilyMember() != null) {
+                    name = p.getFamilyMember().getFullName();
+                    dob = p.getFamilyMember().getBirthDate();
+                    gender = p.getFamilyMember().getGender();
+                    blood = p.getFamilyMember().getBloodGroup() == null ? null : p.getFamilyMember().getBloodGroup().name();
+                    medicalInfo = p.getFamilyMember().getMedicalInfo();
+                    relationship = p.getFamilyMember().getRelationship();
+                } else if (p.getOwnerUser() != null) {
+                    name = p.getOwnerUser().getName();
+                }
+
+                Integer age = computeAge(dob);
+                Double height = readDoubleFromMedicalInfo(medicalInfo, "height");
+                Double weight = readDoubleFromMedicalInfo(medicalInfo, "weight");
+
+                return new PatientDetails(id, name, age, gender, height, weight, blood, relationship);
+            }
+
+            private static Integer computeAge(LocalDate dob) {
+                if (dob == null) return null;
+                return Period.between(dob, LocalDate.now()).getYears();
+            }
+
+            private static Double readDoubleFromMedicalInfo(Map<String, Object> medicalInfo, String key) {
+                if (medicalInfo == null || key == null) return null;
+                Object raw = medicalInfo.get(key);
+                if (raw == null) return null;
+                if (raw instanceof Number n) {
+                    return n.doubleValue();
+                }
+                if (raw instanceof String s) {
+                    try {
+                        String trimmed = s.trim();
+                        return trimmed.isEmpty() ? null : Double.parseDouble(trimmed);
+                    } catch (Exception ignored) {
+                        return null;
+                    }
+                }
+                return null;
+            }
         }
     }
 
@@ -535,18 +631,49 @@ public class ConsultationController {
         }
 
         Provider provider = providerService.ensureForProfessionalUser(actor);
+        final UUID actorId = actor == null ? null : actor.getId();
+        final UUID providerId = provider == null ? null : provider.getId();
 
-        Consultation c = consultationRepository.findByIdAndProviderId(id, provider.getId())
+        Consultation c = consultationRepository.findByIdAndProviderId(id, providerId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Consultation not found"));
+
+        if (c == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Consultation not found");
+        }
 
         if (c.getPatient() == null || c.getPatient().getId() == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Consultation patient missing");
         }
-        patientAccessService.requireProviderAccess(actor, c.getPatient().getId(), Scope.CONSULTATIONS_WRITE);
+        final UUID patientId = c.getPatient().getId();
+        log.info(
+                "[ConsultationController.patch] actorId={} providerId={} consultationId={} patientId={}", 
+                actorId,
+                providerId,
+                id,
+                patientId
+        );
+        patientAccessService.requireProviderAccess(actor, patientId, Scope.CONSULTATIONS_WRITE);
 
         if (request != null) {
             if (request.status() != null) {
+                if (request.status() == ConsultationStatus.COMPLETED) {
+                    final String existing = c.getDiagnosis() == null ? null : c.getDiagnosis().trim();
+                    final String provided = request.diagnosis() == null ? null : request.diagnosis().trim();
+                    final boolean hasDiagnosis = (provided != null && !provided.isEmpty()) || (existing != null && !existing.isEmpty());
+                    if (!hasDiagnosis) {
+                        throw new ResponseStatusException(
+                                HttpStatus.BAD_REQUEST,
+                                "diagnosis is required to complete a consultation"
+                        );
+                    }
+                }
                 c.setStatus(request.status());
+            }
+            if (request.fee() != null) {
+                if (request.fee().compareTo(BigDecimal.ZERO) <= 0) {
+                    throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "fee must be positive");
+                }
+                c.setFee(request.fee());
             }
             if (request.status() == ConsultationStatus.CANCELLED) {
                 ConsultationCancellationReason finalReason = request.cancellationReason() == null
@@ -597,16 +724,25 @@ public class ConsultationController {
         }
 
         Provider provider = providerService.ensureForProfessionalUser(actor);
+        final UUID actorId = actor == null ? null : actor.getId();
+        final UUID providerId = provider == null ? null : provider.getId();
 
-        Consultation c = consultationRepository.findByIdAndProviderId(id, provider.getId())
+        Consultation c = consultationRepository.findByIdAndProviderId(id, providerId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Consultation not found"));
 
         if (c.getPatient() == null || c.getPatient().getId() == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Consultation patient missing");
         }
-        patientAccessService.requireProviderAccess(actor, c.getPatient().getId(), Scope.CONSULTATIONS_WRITE);
+        final UUID patientId = c.getPatient().getId();
+        log.info(
+                "[ConsultationController.complete] actorId={} providerId={} consultationId={} patientId={}",
+                actorId,
+                providerId,
+                id,
+                patientId
+        );
+        patientAccessService.requireProviderAccess(actor, patientId, Scope.CONSULTATIONS_WRITE);
 
-        c.setStatus(ConsultationStatus.COMPLETED);
         if (request != null) {
             if (request.diagnosis() != null) {
                 String trimmed = request.diagnosis().trim();
@@ -617,6 +753,16 @@ public class ConsultationController {
                 c.setTreatment(trimmed.isEmpty() ? null : trimmed);
             }
         }
+
+        final String diagnosis = c.getDiagnosis() == null ? null : c.getDiagnosis().trim();
+        if (diagnosis == null || diagnosis.isEmpty()) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "diagnosis is required to complete a consultation"
+            );
+        }
+
+        c.setStatus(ConsultationStatus.COMPLETED);
 
         Consultation saved = consultationRepository.save(c);
         String warning = computeAllergyWarning(saved);
@@ -646,6 +792,7 @@ public class ConsultationController {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN);
         }
 
+        consultationFinancialService.apply(c);
         return ConsultationFlowResponse.from(c, computeAllergyWarning(c));
     }
 

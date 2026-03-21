@@ -11,10 +11,39 @@ import java.util.UUID;
 
 public interface PatientProviderAccessRepository extends JpaRepository<PatientProviderAccess, UUID> {
 
-    @Query("select a from PatientProviderAccess a where a.patient.id = :patientId and a.provider.id = :providerId and a.revokedAt is null")
-    Optional<PatientProviderAccess> findActiveByPatientIdAndProviderId(@Param("patientId") UUID patientId, @Param("providerId") UUID providerId);
+    @Query("""
+            select a
+            from PatientProviderAccess a
+            join fetch a.patient p
+            left join fetch p.user
+            left join fetch p.familyMember
+            where p.id = :patientId
+              and a.provider.id = :providerId
+              and a.revokedAt is null
+            """)
+    Optional<PatientProviderAccess> findActiveByPatientIdAndProviderId(
+            @Param("patientId") UUID patientId,
+            @Param("providerId") UUID providerId
+    );
 
-    @Query("select a from PatientProviderAccess a where a.provider.id = :providerId and a.revokedAt is null")
+    @Query("""
+            select distinct p.id
+            from PatientProviderAccess a
+            join a.patient p
+            where a.provider.id = :providerId
+              and a.revokedAt is null
+            """)
+    List<UUID> findActivePatientIdsByProviderId(@Param("providerId") UUID providerId);
+
+    @Query("""
+            select a
+            from PatientProviderAccess a
+            join fetch a.patient p
+            left join fetch p.user
+            left join fetch p.familyMember
+            where a.provider.id = :providerId
+              and a.revokedAt is null
+            """)
     List<PatientProviderAccess> findAllActiveByProviderId(@Param("providerId") UUID providerId);
 
     @Query("select a from PatientProviderAccess a where a.patient.id = :patientId and a.revokedAt is null")

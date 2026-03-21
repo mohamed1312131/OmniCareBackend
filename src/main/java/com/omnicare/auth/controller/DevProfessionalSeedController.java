@@ -186,6 +186,9 @@ public class DevProfessionalSeedController {
     public record EnsureFakeDoctorResponse(UUID doctorId, String email, String password) {
     }
 
+    public record EnsureFakePatientResponse(UUID patientId, String email, String password) {
+    }
+
     @PostMapping("/ensure-fake-doctor")
     @Transactional
     public EnsureFakeDoctorResponse ensureFakeDoctor() {
@@ -215,6 +218,29 @@ public class DevProfessionalSeedController {
         }
 
         return new EnsureFakeDoctorResponse(doctor.getId(), doctorUser.getEmail(), password);
+    }
+
+    @PostMapping("/ensure-fake-patient")
+    @Transactional
+    public EnsureFakePatientResponse ensureFakePatient() {
+        String email = "fake.patient@dev.local";
+        String password = "Passw0rd!123";
+
+        User patientUser = userRepository.findByEmail(email).orElseGet(() -> {
+            User u = new User(email, "Fake Patient");
+            u.setRole(UserRole.PATIENT);
+            u.setRegistrationStatus(RegistrationStatus.ACTIVE);
+            u.setEmailVerified(true);
+            u.setPasswordHash(passwordEncoder.encode(password));
+            return userRepository.save(u);
+        });
+
+        if (patientUser.getRole() != UserRole.PATIENT) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Existing user is not a PATIENT");
+        }
+
+        Patient patient = patientService.ensureForUser(patientUser);
+        return new EnsureFakePatientResponse(patient.getId(), patientUser.getEmail(), password);
     }
 
     public record AutoCompleteConsultationRequest(
