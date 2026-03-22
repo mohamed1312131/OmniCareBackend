@@ -16,27 +16,49 @@ public interface ConsultationRepository extends JpaRepository<Consultation, UUID
 
     record ConsultationSummaryRow(
             UUID id,
+            UUID patientId,
             String patientName,
             java.time.Instant timestamp,
             ConsultationStatus status,
             java.math.BigDecimal fee,
+            java.math.BigDecimal netAmount,
+            java.math.BigDecimal omnicareFee,
             String symptoms,
+            String diagnosis,
+            String treatment,
             Double latitude,
             Double longitude
     ) {
         public ConsultationSummaryDTO toDto() {
-            return new ConsultationSummaryDTO(id, patientName, timestamp, status, fee, symptoms);
+            return new ConsultationSummaryDTO(
+                    id,
+                    patientId,
+                    patientName,
+                    timestamp,
+                    status,
+                    fee,
+                    netAmount,
+                    omnicareFee,
+                    symptoms,
+                    diagnosis,
+                    treatment
+            );
         }
     }
 
     @Query("""
             select new com.omnicare.doctor.dto.ConsultationSummaryDTO(
                 c.id,
+                p.id,
                 coalesce(fm.fullName, u.name),
                 c.timestamp,
                 c.status,
                 c.fee,
-                c.symptoms
+                c.netAmount,
+                c.platformFeeAmount,
+                c.symptoms,
+                c.diagnosis,
+                c.treatment
             )
             from Consultation c
             join c.patient p
@@ -54,11 +76,16 @@ public interface ConsultationRepository extends JpaRepository<Consultation, UUID
     @Query("""
             select new com.omnicare.doctor.repository.ConsultationRepository$ConsultationSummaryRow(
                 c.id,
+                p.id,
                 coalesce(fm.fullName, u.name),
                 c.timestamp,
                 c.status,
                 c.fee,
+                c.netAmount,
+                c.platformFeeAmount,
                 c.symptoms,
+                c.diagnosis,
+                c.treatment,
                 c.latitude,
                 c.longitude
             )

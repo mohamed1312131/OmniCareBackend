@@ -142,13 +142,32 @@ public class ConsultationController {
         }
 
         if (actor.getRole() == UserRole.PATIENT) {
-            Patient patient = patientService.ensureForUser(actor);
-            List<Consultation> rows = consultationRepository.findAllByPatientIdOrderByTimestampDesc(patient.getId());
+            final List<UUID> ownedPatientIds = patientRepository.findAllByOwnerUserId(actor.getId()).stream()
+                    .filter(Objects::nonNull)
+                    .map(Patient::getId)
+                    .filter(Objects::nonNull)
+                    .toList();
+
+            if (ownedPatientIds.isEmpty()) {
+                return List.of();
+            }
+
+            List<Consultation> rows = ownedPatientIds.stream()
+                    .flatMap(pid -> consultationRepository.findAllByPatientIdOrderByTimestampDesc(pid).stream())
+                    .toList();
             if (status != null) {
                 rows = rows.stream().filter(c -> status == c.getStatus()).toList();
             }
             return rows.stream()
                     .peek(consultationFinancialService::apply)
+                    .sorted((a, b) -> {
+                        Instant ta = a == null ? null : a.getTimestamp();
+                        Instant tb = b == null ? null : b.getTimestamp();
+                        if (ta == null && tb == null) return 0;
+                        if (ta == null) return 1;
+                        if (tb == null) return -1;
+                        return tb.compareTo(ta);
+                    })
                     .map(c -> ConsultationFlowResponse.from(c, computeAllergyWarning(c)))
                     .toList();
         }
@@ -652,21 +671,17 @@ public class ConsultationController {
                 id,
                 patientId
         );
-        patientAccessService.requireProviderAccess(actor, patientId, Scope.CONSULTATIONS_WRITE);
+        boolean bypassAccess = false;
+        if (actor.getRole() == UserRole.DOCTOR && c.getDoctor() != null && c.getDoctor().getId() != null) {
+            Doctor actorDoctor = doctorService.ensureForDoctorUser(actor);
+            bypassAccess = actorDoctor != null && actorDoctor.getId() != null && actorDoctor.getId().equals(c.getDoctor().getId());
+        }
+        if (!bypassAccess) {
+            patientAccessService.requireProviderAccess(actor, patientId, Scope.CONSULTATIONS_WRITE);
+        }
 
         if (request != null) {
             if (request.status() != null) {
-                if (request.status() == ConsultationStatus.COMPLETED) {
-                    final String existing = c.getDiagnosis() == null ? null : c.getDiagnosis().trim();
-                    final String provided = request.diagnosis() == null ? null : request.diagnosis().trim();
-                    final boolean hasDiagnosis = (provided != null && !provided.isEmpty()) || (existing != null && !existing.isEmpty());
-                    if (!hasDiagnosis) {
-                        throw new ResponseStatusException(
-                                HttpStatus.BAD_REQUEST,
-                                "diagnosis is required to complete a consultation"
-                        );
-                    }
-                }
                 c.setStatus(request.status());
             }
             if (request.fee() != null) {
@@ -741,7 +756,14 @@ public class ConsultationController {
                 id,
                 patientId
         );
-        patientAccessService.requireProviderAccess(actor, patientId, Scope.CONSULTATIONS_WRITE);
+        boolean bypassAccess = false;
+        if (actor.getRole() == UserRole.DOCTOR && c.getDoctor() != null && c.getDoctor().getId() != null) {
+            Doctor actorDoctor = doctorService.ensureForDoctorUser(actor);
+            bypassAccess = actorDoctor != null && actorDoctor.getId() != null && actorDoctor.getId().equals(c.getDoctor().getId());
+        }
+        if (!bypassAccess) {
+            patientAccessService.requireProviderAccess(actor, patientId, Scope.CONSULTATIONS_WRITE);
+        }
 
         if (request != null) {
             if (request.diagnosis() != null) {
@@ -752,14 +774,6 @@ public class ConsultationController {
                 String trimmed = request.treatment().trim();
                 c.setTreatment(trimmed.isEmpty() ? null : trimmed);
             }
-        }
-
-        final String diagnosis = c.getDiagnosis() == null ? null : c.getDiagnosis().trim();
-        if (diagnosis == null || diagnosis.isEmpty()) {
-            throw new ResponseStatusException(
-                    HttpStatus.BAD_REQUEST,
-                    "diagnosis is required to complete a consultation"
-            );
         }
 
         c.setStatus(ConsultationStatus.COMPLETED);
@@ -787,7 +801,14 @@ public class ConsultationController {
             if (c.getPatient() == null || c.getPatient().getId() == null) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Consultation patient missing");
             }
-            patientAccessService.requireProviderAccess(actor, c.getPatient().getId(), Scope.CONSULTATIONS_READ);
+            boolean bypassAccess = false;
+            if (actor.getRole() == UserRole.DOCTOR && c.getDoctor() != null && c.getDoctor().getId() != null) {
+                Doctor actorDoctor = doctorService.ensureForDoctorUser(actor);
+                bypassAccess = actorDoctor != null && actorDoctor.getId() != null && actorDoctor.getId().equals(c.getDoctor().getId());
+            }
+            if (!bypassAccess) {
+                patientAccessService.requireProviderAccess(actor, c.getPatient().getId(), Scope.CONSULTATIONS_READ);
+            }
         } else {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN);
         }
@@ -813,7 +834,14 @@ public class ConsultationController {
             if (c.getPatient() == null || c.getPatient().getId() == null) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Consultation patient missing");
             }
-            patientAccessService.requireProviderAccess(actor, c.getPatient().getId(), Scope.CONSULTATIONS_READ);
+            boolean bypassAccess = false;
+            if (actor.getRole() == UserRole.DOCTOR && c.getDoctor() != null && c.getDoctor().getId() != null) {
+                Doctor actorDoctor = doctorService.ensureForDoctorUser(actor);
+                bypassAccess = actorDoctor != null && actorDoctor.getId() != null && actorDoctor.getId().equals(c.getDoctor().getId());
+            }
+            if (!bypassAccess) {
+                patientAccessService.requireProviderAccess(actor, c.getPatient().getId(), Scope.CONSULTATIONS_READ);
+            }
         } else {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN);
         }
@@ -841,7 +869,14 @@ public class ConsultationController {
         if (c.getPatient() == null || c.getPatient().getId() == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Consultation patient missing");
         }
-        patientAccessService.requireProviderAccess(actor, c.getPatient().getId(), Scope.CONSULTATIONS_WRITE);
+        boolean bypassAccess = false;
+        if (actor.getRole() == UserRole.DOCTOR && c.getDoctor() != null && c.getDoctor().getId() != null) {
+            Doctor actorDoctor = doctorService.ensureForDoctorUser(actor);
+            bypassAccess = actorDoctor != null && actorDoctor.getId() != null && actorDoctor.getId().equals(c.getDoctor().getId());
+        }
+        if (!bypassAccess) {
+            patientAccessService.requireProviderAccess(actor, c.getPatient().getId(), Scope.CONSULTATIONS_WRITE);
+        }
 
         Prescription p = prescriptionService.createOrReplaceForConsultationAsDoctor(id, actor.getId(), request);
         return ConsultationPrescriptionResponse.from(p);

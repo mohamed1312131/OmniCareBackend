@@ -70,6 +70,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -78,21 +79,32 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Random;
+import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicReference;
 
 @RestController
 @RequestMapping({"/auth/dev", "/api/auth/dev"})
 public class DevProfessionalSeedController {
 
     private static final Logger log = LoggerFactory.getLogger(DevProfessionalSeedController.class);
+
+    private static final AtomicReference<String> ACTIVE_SIM_DOCTOR_EMAIL = new AtomicReference<>(null);
 
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
@@ -122,6 +134,10 @@ public class DevProfessionalSeedController {
     private final BodyPartCatalogRepository bodyPartCatalogRepository;
     private final PatientTraumaRepository patientTraumaRepository;
     private final TreatmentPlanRepository treatmentPlanRepository;
+
+    private final List<String> femaleFirstNames;
+    private final List<String> maleFirstNames;
+    private final List<String> lastNames;
 
     public DevProfessionalSeedController(
             UserRepository userRepository,
@@ -181,12 +197,122 @@ public class DevProfessionalSeedController {
         this.bodyPartCatalogRepository = bodyPartCatalogRepository;
         this.patientTraumaRepository = patientTraumaRepository;
         this.treatmentPlanRepository = treatmentPlanRepository;
+
+        this.femaleFirstNames = loadNameListOrFallback("female_names.txt", List.of("Eya", "Mariem", "Emna", "Sarra", "Salma", "Ines", "Yasmine"));
+        this.maleFirstNames = loadNameListOrFallback("male_names.txt", List.of("Ahmed", "Mohamed", "Firas", "Karim", "Mehdi", "Amine", "Yassine"));
+        this.lastNames = loadNameListOrFallback("last_names.txt", List.of("Gharbi", "Hammami", "Ayari", "Mansour", "Trabelsi", "Masmoudi"));
+    }
+
+    private static List<String> loadNameListOrFallback(String fileName, List<String> fallback) {
+        List<String> out = new ArrayList<>();
+        try {
+            // Prefer classpath (if you later move the txt files into src/main/resources)
+            try (var is = DevProfessionalSeedController.class.getClassLoader().getResourceAsStream(fileName)) {
+                if (is != null) {
+                    out = new java.io.BufferedReader(new java.io.InputStreamReader(is, StandardCharsets.UTF_8))
+                            .lines()
+                            .map(String::trim)
+                            .filter(s -> !s.isEmpty())
+                            .distinct()
+                            .toList();
+                }
+            }
+        } catch (Exception ignored) {
+            out = new ArrayList<>();
+        }
+
+        if (out == null || out.isEmpty()) {
+            try {
+                // Fallback to working-directory files (typical for local dev)
+                Path path = Path.of(fileName);
+                if (!path.isAbsolute()) {
+                    path = Path.of(System.getProperty("user.dir")).resolve(fileName);
+                }
+                if (Files.exists(path)) {
+                    out = Files.readAllLines(path, StandardCharsets.UTF_8)
+                            .stream()
+                            .map(String::trim)
+                            .filter(s -> !s.isEmpty())
+                            .distinct()
+                            .toList();
+                }
+            } catch (Exception ignored) {
+                out = new ArrayList<>();
+            }
+        }
+
+        if (out == null || out.isEmpty()) {
+            return fallback == null ? List.of() : fallback;
+        }
+        return out;
     }
 
     public record EnsureFakeDoctorResponse(UUID doctorId, String email, String password) {
     }
 
     public record EnsureFakePatientResponse(UUID patientId, String email, String password) {
+    }
+
+    public record DevAccount(String role, String name, String email) {
+        static DevAccount from(User u) {
+            if (u == null) {
+                return new DevAccount(null, null, null);
+            }
+            String role = u.getRole() == null ? null : u.getRole().name();
+            return new DevAccount(role, u.getName(), u.getEmail());
+        }
+    }
+
+    public record SetActiveDoctorRequest(String email) {
+    }
+
+    public record ActiveDoctor(String email, String password) {
+    }
+
+    @GetMapping("/accounts")
+    @Transactional(readOnly = true)
+    public List<DevAccount> listDevAccounts() {
+        // Intentionally unauthenticated dev endpoint.
+        return userRepository.findAll().stream()
+                .filter(u -> u != null && u.getEmail() != null && !u.getEmail().isBlank())
+                .filter(u -> u.getRole() != null)
+                .filter(u -> u.getRole() == UserRole.PATIENT || ProviderService.isProfessionalRole(u.getRole()))
+                .sorted(
+                        Comparator
+                                .comparing((User u) -> u.getRole() == null ? "" : u.getRole().name())
+                                .thenComparing(u -> u.getName() == null ? "" : u.getName())
+                                .thenComparing(u -> u.getEmail() == null ? "" : u.getEmail())
+                )
+                .map(DevAccount::from)
+                .toList();
+    }
+
+    @PostMapping("/active-doctor")
+    @Transactional
+    public ActiveDoctor setActiveDoctor(@RequestBody SetActiveDoctorRequest request) {
+        String email = request == null ? null : request.email();
+        if (email == null || email.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "email is required");
+        }
+
+        User u = userRepository.findByEmail(email.trim())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No user with email=" + email));
+        if (u.getRole() == null || u.getRole() != UserRole.DOCTOR) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "User is not a DOCTOR");
+        }
+
+        ACTIVE_SIM_DOCTOR_EMAIL.set(u.getEmail());
+        return new ActiveDoctor(u.getEmail(), "Passw0rd!123");
+    }
+
+    @GetMapping("/active-doctor")
+    @Transactional(readOnly = true)
+    public ActiveDoctor getActiveDoctor() {
+        String email = ACTIVE_SIM_DOCTOR_EMAIL.get();
+        if (email == null || email.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "No active doctor selected");
+        }
+        return new ActiveDoctor(email, "Passw0rd!123");
     }
 
     @PostMapping("/ensure-fake-doctor")
@@ -474,10 +600,17 @@ public class DevProfessionalSeedController {
         for (int i = 0; i < showcasePatients; i++) {
             String stamp = String.valueOf(System.currentTimeMillis());
             String patientEmail = "mega.patient." + (i + 1) + "+" + stamp + "@example.tn";
-            String patientName = "Mega Patient " + (i + 1);
+            String patientName = patientEmail;
 
             User patientUser = ensurePatientUser(patientEmail, patientName, password);
             deepFillUserIdentity(r, patientUser);
+            String first = patientUser.getFirstName() == null ? "" : patientUser.getFirstName().trim();
+            String last = patientUser.getLastName() == null ? "" : patientUser.getLastName().trim();
+            String fullName = (first + " " + last).trim();
+            if (!fullName.isBlank()) {
+                patientUser.setName(fullName);
+                patientName = fullName;
+            }
             userRepository.save(patientUser);
             accounts.add(new SeededAccount("PATIENT", patientUser.getName(), patientUser.getEmail(), password));
 
@@ -1026,17 +1159,27 @@ public class DevProfessionalSeedController {
         if (u == null) {
             return;
         }
+        if (u.getGender() == null || u.getGender().isBlank()) {
+            u.setGender(pick(r, new String[]{"M", "F"}));
+        }
+
+        final String gender = u.getGender() == null ? "" : u.getGender().trim().toUpperCase(Locale.ROOT);
         if (u.getFirstName() == null || u.getFirstName().isBlank()) {
-            u.setFirstName(pick(r, new String[]{"Mohamed", "Ahmed", "Sarra", "Yasmine", "Houssem", "Amal"}));
+            if ("F".equals(gender)) {
+                u.setFirstName(pick(r, femaleFirstNames));
+            } else {
+                u.setFirstName(pick(r, maleFirstNames));
+            }
         }
         if (u.getLastName() == null || u.getLastName().isBlank()) {
-            u.setLastName(pick(r, new String[]{"Ben Ali", "Trabelsi", "Gharbi", "Khalfallah", "Jaziri", "Mansour"}));
+            u.setLastName(pick(r, lastNames));
         }
+
         if (u.getName() == null || u.getName().isBlank()) {
-            u.setName(u.getFirstName() + " " + u.getLastName());
-        }
-        if (u.getGender() == null || u.getGender().isBlank()) {
-            u.setGender(pick(r, new String[]{"M", "F", "O"}));
+            String first = u.getFirstName() == null ? "" : u.getFirstName().trim();
+            String last = u.getLastName() == null ? "" : u.getLastName().trim();
+            String full = (first + " " + last).trim();
+            u.setName(full.isBlank() ? u.getEmail() : full);
         }
         if (u.getDateOfBirth() == null) {
             u.setDateOfBirth(LocalDate.now().minusYears(18 + r.nextInt(73)).minusDays(r.nextInt(365)));
@@ -1050,6 +1193,13 @@ public class DevProfessionalSeedController {
         if (u.getMedicalInfo() == null) {
             u.setMedicalInfo(Map.of("heightCm", 150 + r.nextInt(45), "weightKg", 50 + r.nextInt(60)));
         }
+    }
+
+    private String pick(Random r, List<String> values) {
+        if (values == null || values.isEmpty()) {
+            return null;
+        }
+        return values.get(r.nextInt(values.size()));
     }
 
     private static BloodGroup pickFamilyBloodGroup(Random r, BloodGroup base) {

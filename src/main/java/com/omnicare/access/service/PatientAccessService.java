@@ -183,7 +183,7 @@ public class PatientAccessService {
                 .orElse(null);
 
         if (access == null) {
-            if (scope == Scope.PASSPORT_READ) {
+            if (scope == Scope.PASSPORT_READ || scope == Scope.CONSULTATIONS_WRITE) {
                 boolean hasConsultation = consultationRepository.existsByProviderIdAndPatientIdAndStatusIn(
                         provider.getId(),
                         patientId,
