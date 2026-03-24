@@ -60,6 +60,12 @@ public class User {
     @Column(name = "gender")
     private String gender;
 
+    @Column(name = "profile_picture_url")
+    private String profilePictureUrl;
+
+    @Column(name = "profile_picture_public_id")
+    private String profilePicturePublicId;
+
     @Column(name = "phone_verified")
     private Boolean phoneVerified;
 
@@ -175,6 +181,22 @@ public class User {
 
     public void setGender(String gender) {
         this.gender = gender;
+    }
+
+    public String getProfilePictureUrl() {
+        return profilePictureUrl;
+    }
+
+    public void setProfilePictureUrl(String profilePictureUrl) {
+        this.profilePictureUrl = profilePictureUrl;
+    }
+
+    public String getProfilePicturePublicId() {
+        return profilePicturePublicId;
+    }
+
+    public void setProfilePicturePublicId(String profilePicturePublicId) {
+        this.profilePicturePublicId = profilePicturePublicId;
     }
 
     public boolean isPhoneVerified() {

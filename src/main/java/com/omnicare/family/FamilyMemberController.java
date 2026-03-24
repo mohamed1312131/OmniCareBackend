@@ -49,6 +49,8 @@ public class FamilyMemberController {
             String phoneNumber,
             LocalDate birthDate,
             String gender,
+            String profilePictureUrl,
+            String profilePicturePublicId,
             Map<String, Object> medicalInfo
     ) {
     }
@@ -62,6 +64,8 @@ public class FamilyMemberController {
             String phoneNumber,
             LocalDate birthDate,
             String gender,
+            String profilePictureUrl,
+            String profilePicturePublicId,
             Map<String, Object> medicalInfo
     ) {
     }
@@ -77,6 +81,8 @@ public class FamilyMemberController {
             LocalDate birthDate,
             Integer ageYears,
             String gender,
+            String profilePictureUrl,
+            String profilePicturePublicId,
             BloodGroup bloodGroup,
             Map<String, Object> medicalInfo
     ) {
@@ -96,6 +102,8 @@ public class FamilyMemberController {
                     member.getBirthDate(),
                     age,
                     member.getGender(),
+                    member.getProfilePictureUrl(),
+                    member.getProfilePicturePublicId(),
                     member.getBloodGroup(),
                     member.getMedicalInfo()
             );
@@ -119,6 +127,8 @@ public class FamilyMemberController {
                         request.phoneNumber(),
                         request.birthDate(),
                         request.gender(),
+                        request.profilePictureUrl(),
+                        request.profilePicturePublicId(),
                         request.medicalInfo()
                 )
         );
@@ -152,6 +162,8 @@ public class FamilyMemberController {
                         request.phoneNumber(),
                         request.birthDate(),
                         request.gender(),
+                        request.profilePictureUrl(),
+                        request.profilePicturePublicId(),
                         request.medicalInfo()
                 )
         );

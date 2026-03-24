@@ -29,12 +29,35 @@ public class MedicalDocumentController {
         this.userRepository = userRepository;
     }
 
-    public record CreateMedicalDocumentRequest(String title, MedicalDocumentType type, LocalDate issueDate, String fileUrl) {
+    public record CreateMedicalDocumentRequest(
+            String title,
+            MedicalDocumentType type,
+            LocalDate issueDate,
+            String fileUrl,
+            String filePublicId,
+            String fileProvider
+    ) {
     }
 
-    public record MedicalDocumentResponse(UUID id, String title, MedicalDocumentType type, LocalDate issueDate, String fileUrl) {
+    public record MedicalDocumentResponse(
+            UUID id,
+            String title,
+            MedicalDocumentType type,
+            LocalDate issueDate,
+            String fileUrl,
+            String filePublicId,
+            String fileProvider
+    ) {
         public static MedicalDocumentResponse from(MedicalDocument doc) {
-            return new MedicalDocumentResponse(doc.getId(), doc.getTitle(), doc.getType(), doc.getIssueDate(), doc.getFileUrl());
+            return new MedicalDocumentResponse(
+                    doc.getId(),
+                    doc.getTitle(),
+                    doc.getType(),
+                    doc.getIssueDate(),
+                    doc.getFileUrl(),
+                    doc.getFilePublicId(),
+                    doc.getFileProvider()
+            );
         }
     }
 
@@ -62,6 +85,14 @@ public class MedicalDocumentController {
         MedicalDocument doc = new MedicalDocument(user, request.title().trim(), request.type());
         doc.setIssueDate(request.issueDate());
         doc.setFileUrl(request.fileUrl().trim());
+        if (request.filePublicId() != null) {
+            String trimmed = request.filePublicId().trim();
+            doc.setFilePublicId(trimmed.isEmpty() ? null : trimmed);
+        }
+        if (request.fileProvider() != null) {
+            String trimmed = request.fileProvider().trim();
+            doc.setFileProvider(trimmed.isEmpty() ? null : trimmed);
+        }
 
         MedicalDocument saved = medicalDocumentRepository.save(doc);
         return MedicalDocumentResponse.from(saved);

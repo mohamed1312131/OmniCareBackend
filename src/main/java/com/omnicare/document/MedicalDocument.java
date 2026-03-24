@@ -41,6 +41,12 @@ public class MedicalDocument {
     @Column(name = "file_url")
     private String fileUrl;
 
+    @Column(name = "file_public_id")
+    private String filePublicId;
+
+    @Column(name = "file_provider")
+    private String fileProvider;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt = Instant.now();
 
@@ -95,6 +101,22 @@ public class MedicalDocument {
 
     public void setFileUrl(String fileUrl) {
         this.fileUrl = fileUrl;
+    }
+
+    public String getFilePublicId() {
+        return filePublicId;
+    }
+
+    public void setFilePublicId(String filePublicId) {
+        this.filePublicId = filePublicId;
+    }
+
+    public String getFileProvider() {
+        return fileProvider;
+    }
+
+    public void setFileProvider(String fileProvider) {
+        this.fileProvider = fileProvider;
     }
 
     public Instant getCreatedAt() {

@@ -40,6 +40,8 @@ public class FamilyMemberService {
             String phoneNumber,
             LocalDate birthDate,
             String gender,
+            String profilePictureUrl,
+            String profilePicturePublicId,
             Map<String, Object> medicalInfo
     ) {
     }
@@ -53,6 +55,8 @@ public class FamilyMemberService {
             String phoneNumber,
             LocalDate birthDate,
             String gender,
+            String profilePictureUrl,
+            String profilePicturePublicId,
             Map<String, Object> medicalInfo
     ) {
     }
@@ -112,6 +116,14 @@ public class FamilyMemberService {
         member.setBirthDate(request.birthDate());
         if (request.gender() != null && !request.gender().isBlank()) {
             member.setGender(request.gender().trim());
+        }
+        if (request.profilePictureUrl() != null) {
+            String trimmed = request.profilePictureUrl().trim();
+            member.setProfilePictureUrl(trimmed.isEmpty() ? null : trimmed);
+        }
+        if (request.profilePicturePublicId() != null) {
+            String trimmed = request.profilePicturePublicId().trim();
+            member.setProfilePicturePublicId(trimmed.isEmpty() ? null : trimmed);
         }
         member.setMedicalInfo(request.medicalInfo());
 
@@ -200,6 +212,14 @@ public class FamilyMemberService {
             if (request.gender() != null) {
                 String trimmed = request.gender().trim();
                 member.setGender(trimmed.isEmpty() ? null : trimmed);
+            }
+            if (request.profilePictureUrl() != null) {
+                String trimmed = request.profilePictureUrl().trim();
+                member.setProfilePictureUrl(trimmed.isEmpty() ? null : trimmed);
+            }
+            if (request.profilePicturePublicId() != null) {
+                String trimmed = request.profilePicturePublicId().trim();
+                member.setProfilePicturePublicId(trimmed.isEmpty() ? null : trimmed);
             }
             if (request.medicalInfo() != null) {
                 member.setMedicalInfo(request.medicalInfo());

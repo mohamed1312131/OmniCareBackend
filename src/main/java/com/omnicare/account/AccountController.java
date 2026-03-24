@@ -92,6 +92,9 @@ public class AccountController {
     public record UpdateMedicalPassportRequest(BloodGroup bloodGroup, Map<String, Object> medicalInfo) {
     }
 
+    public record UpdateProfilePictureRequest(String profilePictureUrl, String profilePicturePublicId) {
+    }
+
     public record UserProfileResponse(String firstName, String lastName, String avatar) {
     }
 
@@ -117,7 +120,7 @@ public class AccountController {
                 PatientMedicationRepository patientMedicationRepository,
                 ProviderService providerService
         ) {
-            UserProfileResponse profile = new UserProfileResponse(user.getFirstName(), user.getLastName(), null);
+            UserProfileResponse profile = new UserProfileResponse(user.getFirstName(), user.getLastName(), user.getProfilePictureUrl());
 
             UUID providerId = null;
             String providerType = null;
@@ -171,9 +174,25 @@ public class AccountController {
         }
     }
 
-    public record MedicalDocumentResponse(UUID id, String title, MedicalDocumentType type, LocalDate issueDate, String fileUrl) {
+    public record MedicalDocumentResponse(
+            UUID id,
+            String title,
+            MedicalDocumentType type,
+            LocalDate issueDate,
+            String fileUrl,
+            String filePublicId,
+            String fileProvider
+    ) {
         public static MedicalDocumentResponse from(MedicalDocument doc) {
-            return new MedicalDocumentResponse(doc.getId(), doc.getTitle(), doc.getType(), doc.getIssueDate(), doc.getFileUrl());
+            return new MedicalDocumentResponse(
+                    doc.getId(),
+                    doc.getTitle(),
+                    doc.getType(),
+                    doc.getIssueDate(),
+                    doc.getFileUrl(),
+                    doc.getFilePublicId(),
+                    doc.getFileProvider()
+            );
         }
     }
 
@@ -214,6 +233,46 @@ public class AccountController {
                 patientChronicConditionRepository,
                 patientMedicationRepository,
                 providerService
+        );
+    }
+
+    @PatchMapping("/profile-picture")
+    @Transactional
+    public ApiResponse<MedicalPassportResponse> patchProfilePicture(
+            Authentication authentication,
+            @RequestBody UpdateProfilePictureRequest request
+    ) {
+        User user = requireUser(authentication);
+
+        if (request == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Request body is required");
+        }
+
+        String url = request.profilePictureUrl();
+        if (url != null) {
+            url = url.trim();
+        }
+        String publicId = request.profilePicturePublicId();
+        if (publicId != null) {
+            publicId = publicId.trim();
+        }
+
+        if (url == null || url.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "profilePictureUrl is required");
+        }
+
+        user.setProfilePictureUrl(url);
+        user.setProfilePicturePublicId((publicId == null || publicId.isBlank()) ? null : publicId);
+        userRepository.save(user);
+
+        return ApiResponse.success(
+                MedicalPassportResponse.from(
+                        user,
+                        patientService,
+                        patientChronicConditionRepository,
+                        patientMedicationRepository,
+                        providerService
+                )
         );
     }
 
