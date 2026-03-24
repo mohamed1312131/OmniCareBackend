@@ -31,10 +31,30 @@ public class FamilyMemberService {
         this.patientRepository = patientRepository;
     }
 
-    public record CreateRequest(String fullName, String relationship, LocalDate birthDate, String gender, Map<String, Object> medicalInfo) {
+    public record CreateRequest(
+            String fullName,
+            String firstName,
+            String lastName,
+            String relationship,
+            String relationshipDescription,
+            String phoneNumber,
+            LocalDate birthDate,
+            String gender,
+            Map<String, Object> medicalInfo
+    ) {
     }
 
-    public record UpdateRequest(String fullName, String relationship, LocalDate birthDate, String gender, Map<String, Object> medicalInfo) {
+    public record UpdateRequest(
+            String fullName,
+            String firstName,
+            String lastName,
+            String relationship,
+            String relationshipDescription,
+            String phoneNumber,
+            LocalDate birthDate,
+            String gender,
+            Map<String, Object> medicalInfo
+    ) {
     }
 
     @Transactional
@@ -42,8 +62,8 @@ public class FamilyMemberService {
         if (email == null || email.isBlank()) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED);
         }
-        if (request == null || request.fullName() == null || request.fullName().isBlank()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "fullName is required");
+        if (request == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "request is required");
         }
         if (request.relationship() == null || request.relationship().isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "relationship is required");
@@ -57,7 +77,38 @@ public class FamilyMemberService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Family limit reached");
         }
 
-        FamilyMember member = new FamilyMember(user, request.fullName().trim(), request.relationship().trim());
+        String resolvedFullName = null;
+        if (request.fullName() != null && !request.fullName().isBlank()) {
+            resolvedFullName = request.fullName().trim();
+        } else {
+            String fn = request.firstName() == null ? "" : request.firstName().trim();
+            String ln = request.lastName() == null ? "" : request.lastName().trim();
+            String joined = (fn + " " + ln).trim();
+            if (!joined.isEmpty()) {
+                resolvedFullName = joined;
+            }
+        }
+        if (resolvedFullName == null || resolvedFullName.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "fullName or firstName/lastName is required");
+        }
+
+        FamilyMember member = new FamilyMember(user, resolvedFullName, request.relationship().trim());
+        if (request.firstName() != null) {
+            String trimmed = request.firstName().trim();
+            member.setFirstName(trimmed.isEmpty() ? null : trimmed);
+        }
+        if (request.lastName() != null) {
+            String trimmed = request.lastName().trim();
+            member.setLastName(trimmed.isEmpty() ? null : trimmed);
+        }
+        if (request.relationshipDescription() != null) {
+            String trimmed = request.relationshipDescription().trim();
+            member.setRelationshipDescription(trimmed.isEmpty() ? null : trimmed);
+        }
+        if (request.phoneNumber() != null) {
+            String trimmed = request.phoneNumber().trim();
+            member.setPhoneNumber(trimmed.isEmpty() ? null : trimmed);
+        }
         member.setBirthDate(request.birthDate());
         if (request.gender() != null && !request.gender().isBlank()) {
             member.setGender(request.gender().trim());
@@ -120,12 +171,28 @@ public class FamilyMemberService {
                 }
                 member.setFullName(trimmed);
             }
+            if (request.firstName() != null) {
+                String trimmed = request.firstName().trim();
+                member.setFirstName(trimmed.isEmpty() ? null : trimmed);
+            }
+            if (request.lastName() != null) {
+                String trimmed = request.lastName().trim();
+                member.setLastName(trimmed.isEmpty() ? null : trimmed);
+            }
             if (request.relationship() != null) {
                 String trimmed = request.relationship().trim();
                 if (trimmed.isEmpty()) {
                     throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "relationship cannot be blank");
                 }
                 member.setRelationship(trimmed);
+            }
+            if (request.relationshipDescription() != null) {
+                String trimmed = request.relationshipDescription().trim();
+                member.setRelationshipDescription(trimmed.isEmpty() ? null : trimmed);
+            }
+            if (request.phoneNumber() != null) {
+                String trimmed = request.phoneNumber().trim();
+                member.setPhoneNumber(trimmed.isEmpty() ? null : trimmed);
             }
             if (request.birthDate() != null) {
                 member.setBirthDate(request.birthDate());

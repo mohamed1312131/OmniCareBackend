@@ -29,6 +29,9 @@ import org.springframework.web.server.ResponseStatusException;
 
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
+import java.time.format.DateTimeParseException;
+
 @RestController
 @RequestMapping({"/api/auth", "/v1/auth"})
 public class AuthController {
@@ -95,7 +98,15 @@ public class AuthController {
     public record RegisterResponse(String message) {
     }
 
-    public record RegisterRequest(String email, String name, String password) {
+    public record RegisterRequest(
+            String email,
+            String name,
+            String firstName,
+            String lastName,
+            String gender,
+            String dateOfBirth,
+            String password
+    ) {
     }
 
     public record VerifyEmailOtpRequest(String email, String code) {
@@ -234,14 +245,56 @@ public class AuthController {
         }
 
         String email = request.email().trim().toLowerCase();
-        String rawName = request.name();
-        String resolvedName = (rawName == null || rawName.isBlank()) ? email : rawName.trim();
+        String resolvedFirstName = request.firstName();
+        if (resolvedFirstName != null) {
+            resolvedFirstName = resolvedFirstName.trim();
+            if (resolvedFirstName.isEmpty()) {
+                resolvedFirstName = null;
+            }
+        }
+        String resolvedLastName = request.lastName();
+        if (resolvedLastName != null) {
+            resolvedLastName = resolvedLastName.trim();
+            if (resolvedLastName.isEmpty()) {
+                resolvedLastName = null;
+            }
+        }
+
+        String resolvedName;
+        if ((resolvedFirstName != null && !resolvedFirstName.isBlank()) || (resolvedLastName != null && !resolvedLastName.isBlank())) {
+            resolvedName = ((resolvedFirstName == null) ? "" : resolvedFirstName) + ((resolvedLastName == null) ? "" : (" " + resolvedLastName));
+            resolvedName = resolvedName.trim();
+        } else {
+            String rawName = request.name();
+            resolvedName = (rawName == null || rawName.isBlank()) ? email : rawName.trim();
+        }
 
         if (userRepository.findByEmail(email).isPresent()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Email already exists");
         }
 
         User user = new User(email, resolvedName);
+        user.setFirstName(resolvedFirstName);
+        user.setLastName(resolvedLastName);
+
+        String gender = request.gender();
+        if (gender != null) {
+            gender = gender.trim();
+            if (gender.isEmpty()) {
+                gender = null;
+            }
+        }
+        user.setGender(gender);
+
+        LocalDate dob = null;
+        if (request.dateOfBirth() != null && !request.dateOfBirth().isBlank()) {
+            try {
+                dob = LocalDate.parse(request.dateOfBirth().trim());
+            } catch (DateTimeParseException ex) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "dateOfBirth must be ISO-8601 yyyy-MM-dd");
+            }
+        }
+        user.setDateOfBirth(dob);
         user.setPasswordHash(passwordEncoder.encode(request.password()));
         user.setRole(UserRole.PATIENT);
         user.setRegistrationStatus(RegistrationStatus.PENDING_OTP);

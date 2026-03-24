@@ -63,6 +63,10 @@ public class PatientChronicConditionService {
             finalName = catalog.getName();
         } else {
             finalName = request.name().trim();
+            catalog = chronicConditionCatalogRepository.findByNameIgnoreCase(finalName).orElse(null);
+            if (catalog != null && catalog.getName() != null && !catalog.getName().isBlank()) {
+                finalName = catalog.getName();
+            }
         }
 
         if (patientChronicConditionRepository.existsByPatientIdAndNameIgnoreCase(patient.getId(), finalName)) {

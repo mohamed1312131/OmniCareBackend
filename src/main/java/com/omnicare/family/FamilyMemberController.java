@@ -40,13 +40,46 @@ public class FamilyMemberController {
         this.medicalInfoValidator = medicalInfoValidator;
     }
 
-    public record CreateFamilyMemberRequest(String fullName, String relationship, LocalDate birthDate, String gender, Map<String, Object> medicalInfo) {
+    public record CreateFamilyMemberRequest(
+            String fullName,
+            String firstName,
+            String lastName,
+            String relationship,
+            String relationshipDescription,
+            String phoneNumber,
+            LocalDate birthDate,
+            String gender,
+            Map<String, Object> medicalInfo
+    ) {
     }
 
-    public record UpdateFamilyMemberRequest(String fullName, String relationship, LocalDate birthDate, String gender, Map<String, Object> medicalInfo) {
+    public record UpdateFamilyMemberRequest(
+            String fullName,
+            String firstName,
+            String lastName,
+            String relationship,
+            String relationshipDescription,
+            String phoneNumber,
+            LocalDate birthDate,
+            String gender,
+            Map<String, Object> medicalInfo
+    ) {
     }
 
-    public record FamilyMemberResponse(UUID id, String fullName, String relationship, LocalDate birthDate, Integer ageYears, String gender, BloodGroup bloodGroup, Map<String, Object> medicalInfo) {
+    public record FamilyMemberResponse(
+            UUID id,
+            String fullName,
+            String firstName,
+            String lastName,
+            String relationship,
+            String relationshipDescription,
+            String phoneNumber,
+            LocalDate birthDate,
+            Integer ageYears,
+            String gender,
+            BloodGroup bloodGroup,
+            Map<String, Object> medicalInfo
+    ) {
         public static FamilyMemberResponse from(FamilyMember member) {
             Integer age = null;
             if (member.getBirthDate() != null) {
@@ -55,7 +88,11 @@ public class FamilyMemberController {
             return new FamilyMemberResponse(
                     member.getId(),
                     member.getFullName(),
+                    member.getFirstName(),
+                    member.getLastName(),
                     member.getRelationship(),
+                    member.getRelationshipDescription(),
+                    member.getPhoneNumber(),
                     member.getBirthDate(),
                     age,
                     member.getGender(),
@@ -73,7 +110,17 @@ public class FamilyMemberController {
         String email = requireEmail(authentication);
         FamilyMember created = familyMemberService.createForUserEmail(
                 email,
-                new FamilyMemberService.CreateRequest(request.fullName(), request.relationship(), request.birthDate(), request.gender(), request.medicalInfo())
+                new FamilyMemberService.CreateRequest(
+                        request.fullName(),
+                        request.firstName(),
+                        request.lastName(),
+                        request.relationship(),
+                        request.relationshipDescription(),
+                        request.phoneNumber(),
+                        request.birthDate(),
+                        request.gender(),
+                        request.medicalInfo()
+                )
         );
         return FamilyMemberResponse.from(created);
     }
@@ -96,7 +143,17 @@ public class FamilyMemberController {
         FamilyMember updated = familyMemberService.updateForUserEmail(
                 email,
                 id,
-                new FamilyMemberService.UpdateRequest(request.fullName(), request.relationship(), request.birthDate(), request.gender(), request.medicalInfo())
+                new FamilyMemberService.UpdateRequest(
+                        request.fullName(),
+                        request.firstName(),
+                        request.lastName(),
+                        request.relationship(),
+                        request.relationshipDescription(),
+                        request.phoneNumber(),
+                        request.birthDate(),
+                        request.gender(),
+                        request.medicalInfo()
+                )
         );
         return FamilyMemberResponse.from(updated);
     }

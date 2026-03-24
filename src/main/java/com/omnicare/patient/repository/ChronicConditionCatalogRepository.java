@@ -9,4 +9,6 @@ import java.util.UUID;
 public interface ChronicConditionCatalogRepository extends JpaRepository<ChronicConditionCatalog, UUID> {
 
     Optional<ChronicConditionCatalog> findByCodeIgnoreCase(String code);
+
+    Optional<ChronicConditionCatalog> findByNameIgnoreCase(String name);
 }

@@ -1,5 +1,7 @@
 # Local dev secrets
+
 /dev.env.ps1
+/.env
 
 # Maven
 /target/

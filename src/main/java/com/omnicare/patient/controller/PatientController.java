@@ -41,6 +41,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.Period;
 import java.time.ZoneId;
@@ -495,7 +496,7 @@ public class PatientController {
     public record CreateMedicationRequest(UUID medicationId, Integer timesPerDay, String frequency, Integer durationDays, LocalDate startDate, String notes) {
     }
 
-    public record PatientMedicationResponse(UUID id, UUID medicationId, String name, String dosage, String form, String dci, String type, Integer timesPerDay, String frequency, Integer durationDays, LocalDate startDate, String notes) {
+    public record PatientMedicationResponse(UUID id, UUID medicationId, String name, String dosage, String form, String dci, String type, Integer timesPerDay, String frequency, Integer durationDays, LocalDate startDate, String notes, Instant recordedAt, UUID createdByUserId) {
         static PatientMedicationResponse from(PatientMedication pm) {
             return new PatientMedicationResponse(
                     pm.getId(),
@@ -509,7 +510,9 @@ public class PatientController {
                     pm.getFrequency(),
                     pm.getDurationDays(),
                     pm.getStartDate(),
-                    pm.getNotes()
+                    pm.getNotes(),
+                    pm.getRecordedAt(),
+                    pm.getCreatedByUser() != null ? pm.getCreatedByUser().getId() : null
             );
         }
     }
@@ -539,9 +542,16 @@ public class PatientController {
     public record CreateConditionRequest(UUID conditionId, String name, String notes) {
     }
 
-    public record PatientChronicConditionResponse(UUID id, String name, String notes) {
+    public record PatientChronicConditionResponse(UUID id, UUID conditionId, String name, String notes, Instant recordedAt, UUID createdByUserId) {
         static PatientChronicConditionResponse from(PatientChronicCondition cc) {
-            return new PatientChronicConditionResponse(cc.getId(), cc.getName(), cc.getNotes());
+            return new PatientChronicConditionResponse(
+                    cc.getId(),
+                    cc.getCondition() != null ? cc.getCondition().getId() : null,
+                    cc.getName(),
+                    cc.getNotes(),
+                    cc.getRecordedAt(),
+                    cc.getCreatedByUser() != null ? cc.getCreatedByUser().getId() : null
+            );
         }
     }
 

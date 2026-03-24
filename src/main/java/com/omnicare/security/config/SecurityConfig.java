@@ -7,6 +7,7 @@ import com.omnicare.security.service.OmnicareOidcUserService;
 import com.omnicare.security.service.OmnicareOAuth2UserService;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Profile;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
@@ -41,7 +42,8 @@ public class SecurityConfig {
     }
 
     @Bean
-    public SecurityFilterChain securityFilterChain(
+    @Profile("dev")
+    public SecurityFilterChain securityFilterChainDev(
             HttpSecurity http,
             OmnicareOAuth2UserService omnicareOAuth2UserService,
             OmnicareOidcUserService omnicareOidcUserService,
@@ -55,8 +57,66 @@ public class SecurityConfig {
                 .csrf(csrf -> csrf.disable())
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED))
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+                        .requestMatchers(org.springframework.http.HttpMethod.OPTIONS, "/**").permitAll()
                         .requestMatchers("/", "/error", "/login/**", "/oauth2/**", "/auth/dev/**", "/dev/**").permitAll()
+                        .requestMatchers("/api/auth/**").permitAll()
+                        .requestMatchers("/api/auth/dev/**").permitAll()
+                        .requestMatchers("/api/auth/login").permitAll()
+                        .requestMatchers("/api/auth/register").permitAll()
+                        .requestMatchers("/api/auth/google").permitAll()
+                        .requestMatchers("/api/auth/verify-email").permitAll()
+                        .requestMatchers("/api/auth/verify-email-otp").permitAll()
+                        .requestMatchers("/api/auth/set-phone").permitAll()
+                        .requestMatchers("/api/auth/request-phone-otp").permitAll()
+                        .requestMatchers("/api/auth/verify-phone-otp").permitAll()
+                        .requestMatchers("/api/medications/search").permitAll()
+                        .requestMatchers("/v1/auth/**").permitAll()
+                        .requestMatchers("/api/**").authenticated()
+                        .requestMatchers("/v1/**").authenticated()
+                        .anyRequest().authenticated()
+                )
+                .oauth2Login(oauth2 -> oauth2
+                        .authorizationEndpoint(authorization -> authorization
+                                .authorizationRequestResolver(authorizationRequestResolver)
+                        )
+                        .userInfoEndpoint(userInfo -> userInfo
+                                .userService(omnicareOAuth2UserService)
+                                .oidcUserService(omnicareOidcUserService)
+                        )
+                        .successHandler(oAuth2LoginSuccessHandler)
+                )
+                .oauth2ResourceServer(oauth2 -> oauth2
+                        .bearerTokenResolver(bearerTokenResolver())
+                        .jwt(jwt -> jwt
+                                .decoder(jwtDecoder)
+                                .jwtAuthenticationConverter(jwtAuthenticationConverter())
+                        )
+                );
+
+        http.addFilterAfter(registrationStatusFilter, BearerTokenAuthenticationFilter.class);
+
+        return http.build();
+    }
+
+    @Bean
+    @Profile("!dev")
+    public SecurityFilterChain securityFilterChain(
+            HttpSecurity http,
+            OmnicareOAuth2UserService omnicareOAuth2UserService,
+            OmnicareOidcUserService omnicareOidcUserService,
+            OAuth2LoginSuccessHandler oAuth2LoginSuccessHandler,
+            JwtDecoder jwtDecoder,
+            OAuth2AuthorizationRequestResolver authorizationRequestResolver,
+            RegistrationStatusFilter registrationStatusFilter
+    ) throws Exception {
+        http
+                .cors(Customizer.withDefaults())
+                .csrf(csrf -> csrf.ignoringRequestMatchers("/api/auth/**", "/v1/auth/**"))
+                .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED))
+                .authorizeHttpRequests(auth -> auth
+                        .requestMatchers(org.springframework.http.HttpMethod.OPTIONS, "/**").permitAll()
+                        .requestMatchers("/", "/error", "/login/**", "/oauth2/**", "/auth/dev/**", "/dev/**").permitAll()
+                        .requestMatchers("/api/auth/**").permitAll()
                         .requestMatchers("/api/auth/dev/**").permitAll()
                         .requestMatchers("/api/auth/login").permitAll()
                         .requestMatchers("/api/auth/register").permitAll()
@@ -125,7 +185,12 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource(AppProperties appProperties) {
         CorsConfiguration configuration = new CorsConfiguration();
-        configuration.setAllowedOriginPatterns(List.of("http://localhost:5000", "http://localhost:*", "http://127.0.0.1:*"));
+        configuration.setAllowedOriginPatterns(List.of(
+            "http://localhost:5000",
+            "http://localhost:5173",
+            "http://192.168.100.83:5173",
+            "http://192.168.100.83:8080"
+        ));
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(List.of("Authorization", "Content-Type"));
         configuration.setExposedHeaders(List.of("Authorization"));

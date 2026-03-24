@@ -34,8 +34,20 @@ public class FamilyMember {
     @Column(name = "full_name", nullable = false)
     private String fullName;
 
+    @Column(name = "first_name")
+    private String firstName;
+
+    @Column(name = "last_name")
+    private String lastName;
+
     @Column(name = "relationship", nullable = false)
     private String relationship;
+
+    @Column(name = "relationship_description")
+    private String relationshipDescription;
+
+    @Column(name = "phone_number")
+    private String phoneNumber;
 
     @Column(name = "birth_date")
     private LocalDate birthDate;
@@ -80,12 +92,44 @@ public class FamilyMember {
         this.fullName = fullName;
     }
 
+    public String getFirstName() {
+        return firstName;
+    }
+
+    public void setFirstName(String firstName) {
+        this.firstName = firstName;
+    }
+
+    public String getLastName() {
+        return lastName;
+    }
+
+    public void setLastName(String lastName) {
+        this.lastName = lastName;
+    }
+
     public String getRelationship() {
         return relationship;
     }
 
     public void setRelationship(String relationship) {
         this.relationship = relationship;
+    }
+
+    public String getRelationshipDescription() {
+        return relationshipDescription;
+    }
+
+    public void setRelationshipDescription(String relationshipDescription) {
+        this.relationshipDescription = relationshipDescription;
+    }
+
+    public String getPhoneNumber() {
+        return phoneNumber;
+    }
+
+    public void setPhoneNumber(String phoneNumber) {
+        this.phoneNumber = phoneNumber;
     }
 
     public LocalDate getBirthDate() {
