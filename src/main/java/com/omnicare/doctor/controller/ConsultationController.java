@@ -98,8 +98,7 @@ public class ConsultationController {
             MedicalActCatalogRepository medicalActCatalogRepository,
             ConsultationMedicalActRepository consultationMedicalActRepository,
             BodyPartCatalogRepository bodyPartCatalogRepository,
-            TreatmentPlanRepository treatmentPlanRepository
-    ) {
+            TreatmentPlanRepository treatmentPlanRepository) {
         this.userRepository = userRepository;
         this.doctorService = doctorService;
         this.providerService = providerService;
@@ -120,7 +119,8 @@ public class ConsultationController {
 
     @GetMapping
     @Transactional(readOnly = true)
-    public List<ConsultationFlowResponse> list(Authentication authentication, @RequestParam(value = "status", required = false) ConsultationStatus status) {
+    public List<ConsultationFlowResponse> list(Authentication authentication,
+            @RequestParam(value = "status", required = false) ConsultationStatus status) {
         User actor = requireUser(authentication);
 
         if (ProviderService.isProfessionalRole(actor.getRole()) && actor.getRole() != UserRole.ADMIN) {
@@ -133,7 +133,8 @@ public class ConsultationController {
                         if (c == null || c.getPatient() == null || c.getPatient().getId() == null) {
                             return false;
                         }
-                        patientAccessService.requireProviderAccess(actor, c.getPatient().getId(), Scope.CONSULTATIONS_READ);
+                        patientAccessService.requireProviderAccess(actor, c.getPatient().getId(),
+                                Scope.CONSULTATIONS_READ);
                         return true;
                     })
                     .peek(consultationFinancialService::apply)
@@ -163,9 +164,12 @@ public class ConsultationController {
                     .sorted((a, b) -> {
                         Instant ta = a == null ? null : a.getTimestamp();
                         Instant tb = b == null ? null : b.getTimestamp();
-                        if (ta == null && tb == null) return 0;
-                        if (ta == null) return 1;
-                        if (tb == null) return -1;
+                        if (ta == null && tb == null)
+                            return 0;
+                        if (ta == null)
+                            return 1;
+                        if (tb == null)
+                            return -1;
                         return tb.compareTo(ta);
                     })
                     .map(c -> ConsultationFlowResponse.from(c, computeAllergyWarning(c)))
@@ -181,6 +185,7 @@ public class ConsultationController {
             UUID patientId,
             String symptoms,
             Integer painLevel,
+            String bodyPart,
             List<String> affectedAreas,
             ConsultationLocationType locationType,
             UUID treatmentPlanId,
@@ -192,8 +197,8 @@ public class ConsultationController {
             BigDecimal basePrice,
             BigDecimal fee,
             List<UUID> medicalActIds,
-            String otherMedicalActText
-    ) {
+            String otherMedicalActText,
+            Boolean medicalPassportConsent) {
     }
 
     public record PatchConsultationRequest(
@@ -201,8 +206,7 @@ public class ConsultationController {
             ConsultationCancellationReason cancellationReason,
             String diagnosis,
             String treatment,
-            java.math.BigDecimal fee
-    ) {
+            java.math.BigDecimal fee) {
     }
 
     public record ConsultationFlowResponse(
@@ -238,8 +242,7 @@ public class ConsultationController {
             @JsonProperty("net_amount") BigDecimal netAmount,
             @JsonProperty("omnicare_fee") BigDecimal omnicareFee,
             @JsonProperty("timestamp") Instant timestamp,
-            @JsonProperty("allergy_warning") String allergyWarning
-    ) {
+            @JsonProperty("allergy_warning") String allergyWarning) {
         public static ConsultationFlowResponse from(Consultation c, String allergyWarning) {
             List<String> affectedAreas = c.getAffectedAreas() == null ? List.of() : List.copyOf(c.getAffectedAreas());
 
@@ -307,8 +310,7 @@ public class ConsultationController {
                     c.getNetAmount(),
                     c.getOmnicareFee(),
                     c.getTimestamp(),
-                    allergyWarning
-            );
+                    allergyWarning);
         }
 
         private record PatientDetails(
@@ -319,8 +321,7 @@ public class ConsultationController {
                 Double height,
                 Double weight,
                 String bloodGroup,
-                String relationship
-        ) {
+                String relationship) {
             static PatientDetails from(Patient p) {
                 if (p == null) {
                     return new PatientDetails(null, null, null, null, null, null, null, null);
@@ -345,7 +346,8 @@ public class ConsultationController {
                     name = p.getFamilyMember().getFullName();
                     dob = p.getFamilyMember().getBirthDate();
                     gender = p.getFamilyMember().getGender();
-                    blood = p.getFamilyMember().getBloodGroup() == null ? null : p.getFamilyMember().getBloodGroup().name();
+                    blood = p.getFamilyMember().getBloodGroup() == null ? null
+                            : p.getFamilyMember().getBloodGroup().name();
                     medicalInfo = p.getFamilyMember().getMedicalInfo();
                     relationship = p.getFamilyMember().getRelationship();
                 } else if (p.getOwnerUser() != null) {
@@ -360,14 +362,17 @@ public class ConsultationController {
             }
 
             private static Integer computeAge(LocalDate dob) {
-                if (dob == null) return null;
+                if (dob == null)
+                    return null;
                 return Period.between(dob, LocalDate.now()).getYears();
             }
 
             private static Double readDoubleFromMedicalInfo(Map<String, Object> medicalInfo, String key) {
-                if (medicalInfo == null || key == null) return null;
+                if (medicalInfo == null || key == null)
+                    return null;
                 Object raw = medicalInfo.get(key);
-                if (raw == null) return null;
+                if (raw == null)
+                    return null;
                 if (raw instanceof Number n) {
                     return n.doubleValue();
                 }
@@ -394,8 +399,7 @@ public class ConsultationController {
             int frequencyPeriodDays,
             int durationDays,
             java.time.LocalDate startDate,
-            String instructions
-    ) {
+            String instructions) {
         static ConsultationPrescriptionItemResponse from(PrescriptionItem i) {
             return new ConsultationPrescriptionItemResponse(
                     i.getId(),
@@ -407,8 +411,7 @@ public class ConsultationController {
                     i.getFrequencyPeriodDays(),
                     i.getDurationDays(),
                     i.getStartDate(),
-                    i.getInstructions()
-            );
+                    i.getInstructions());
         }
     }
 
@@ -420,8 +423,7 @@ public class ConsultationController {
             Instant issuedAt,
             com.omnicare.prescription.model.PrescriptionStatus status,
             String notes,
-            List<ConsultationPrescriptionItemResponse> items
-    ) {
+            List<ConsultationPrescriptionItemResponse> items) {
         static ConsultationPrescriptionResponse from(Prescription p) {
             UUID prescriberId = p.getPrescriberUser() == null ? null : p.getPrescriberUser().getId();
             UUID consultationId = p.getConsultation() == null ? null : p.getConsultation().getId();
@@ -433,18 +435,20 @@ public class ConsultationController {
                     p.getIssuedAt(),
                     p.getStatus(),
                     p.getNotes(),
-                    (p.getItems() == null ? List.of() : p.getItems().stream().map(ConsultationPrescriptionItemResponse::from).toList())
-            );
+                    (p.getItems() == null ? List.of()
+                            : p.getItems().stream().map(ConsultationPrescriptionItemResponse::from).toList()));
         }
     }
 
     @PostMapping
     @Transactional
-    public ConsultationFlowResponse create(Authentication authentication, @RequestBody CreateConsultationRequest request) {
+    public ConsultationFlowResponse create(Authentication authentication,
+            @RequestBody CreateConsultationRequest request) {
         User actor = requireUser(authentication);
 
         final boolean isDoctorActor = actor.getRole() == UserRole.DOCTOR;
-        final boolean isProfessionalActor = ProviderService.isProfessionalRole(actor.getRole()) && actor.getRole() != UserRole.ADMIN;
+        final boolean isProfessionalActor = ProviderService.isProfessionalRole(actor.getRole())
+                && actor.getRole() != UserRole.ADMIN;
         final boolean isPatientActor = actor.getRole() == UserRole.PATIENT;
         if (!isProfessionalActor && !isPatientActor) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN);
@@ -516,15 +520,21 @@ public class ConsultationController {
         c.setStatus(ConsultationStatus.PENDING);
 
         if (provider.getType() == ProviderType.KINE) {
-            c.setLocationType(request.locationType() == null ? ConsultationLocationType.CLINIC : request.locationType());
+            c.setLocationType(
+                    request.locationType() == null ? ConsultationLocationType.CLINIC : request.locationType());
             if (request.treatmentPlanId() != null) {
                 TreatmentPlan plan = treatmentPlanRepository.findById(request.treatmentPlanId())
-                        .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid treatmentPlanId"));
-                if (plan.getPatient() == null || plan.getPatient().getId() == null || !plan.getPatient().getId().equals(patient.getId())) {
-                    throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "treatmentPlanId does not belong to patient");
+                        .orElseThrow(
+                                () -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid treatmentPlanId"));
+                if (plan.getPatient() == null || plan.getPatient().getId() == null
+                        || !plan.getPatient().getId().equals(patient.getId())) {
+                    throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                            "treatmentPlanId does not belong to patient");
                 }
-                if (plan.getProvider() == null || plan.getProvider().getId() == null || !plan.getProvider().getId().equals(provider.getId())) {
-                    throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "treatmentPlanId does not belong to provider");
+                if (plan.getProvider() == null || plan.getProvider().getId() == null
+                        || !plan.getProvider().getId().equals(provider.getId())) {
+                    throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                            "treatmentPlanId does not belong to provider");
                 }
                 c.setTreatmentPlan(plan);
             }
@@ -533,14 +543,16 @@ public class ConsultationController {
                 c.setLocationType(request.locationType());
             }
             if (request.treatmentPlanId() != null) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "treatmentPlanId is only supported for kine consultations");
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "treatmentPlanId is only supported for kine consultations");
             }
         }
 
         List<MedicalActCatalog> selectedActs = List.of();
         if (provider.getType() == ProviderType.NURSE) {
             if (request.medicalActIds() == null || request.medicalActIds().isEmpty()) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "medicalActIds is required for nurse consultations");
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "medicalActIds is required for nurse consultations");
             }
 
             List<UUID> cleanedIds = request.medicalActIds().stream()
@@ -548,7 +560,8 @@ public class ConsultationController {
                     .distinct()
                     .toList();
             if (cleanedIds.isEmpty()) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "medicalActIds is required for nurse consultations");
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "medicalActIds is required for nurse consultations");
             }
 
             selectedActs = medicalActCatalogRepository.findAllById(cleanedIds);
@@ -556,16 +569,19 @@ public class ConsultationController {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "One or more medicalActIds are invalid");
             }
 
-            boolean hasOther = selectedActs.stream().anyMatch(a -> a != null && a.getCode() != null && a.getCode().equalsIgnoreCase("NURSE_OTHER_COMPLEX_CARE"));
+            boolean hasOther = selectedActs.stream().anyMatch(
+                    a -> a != null && a.getCode() != null && a.getCode().equalsIgnoreCase("NURSE_OTHER_COMPLEX_CARE"));
             String otherText = request.otherMedicalActText();
             if (hasOther) {
                 if (otherText == null || otherText.isBlank()) {
-                    throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "otherMedicalActText is required when selecting Other / Complex Care");
+                    throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                            "otherMedicalActText is required when selecting Other / Complex Care");
                 }
                 c.setOtherMedicalActText(otherText.trim());
             } else {
                 if (otherText != null && !otherText.isBlank()) {
-                    throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "otherMedicalActText is only allowed when selecting Other / Complex Care");
+                    throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                            "otherMedicalActText is only allowed when selecting Other / Complex Care");
                 }
             }
 
@@ -587,8 +603,15 @@ public class ConsultationController {
 
         c.setPainLevel(request.painLevel());
 
+        List<String> requestedAreas = new ArrayList<>();
         if (request.affectedAreas() != null) {
-            List<String> cleaned = request.affectedAreas().stream()
+            requestedAreas.addAll(request.affectedAreas());
+        }
+        if (request.bodyPart() != null && !request.bodyPart().isBlank()) {
+            requestedAreas.add(request.bodyPart());
+        }
+        if (!requestedAreas.isEmpty()) {
+            List<String> cleaned = requestedAreas.stream()
                     .filter(Objects::nonNull)
                     .map(String::trim)
                     .filter(s -> !s.isEmpty())
@@ -598,7 +621,8 @@ public class ConsultationController {
             if (!cleaned.isEmpty()) {
                 long known = bodyPartCatalogRepository.countByKeyIgnoreCaseIn(cleaned);
                 if (known != cleaned.size()) {
-                    throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "One or more affectedAreas keys are invalid");
+                    throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                            "One or more affectedAreas keys are invalid");
                 }
             }
             c.setAffectedAreas(cleaned);
@@ -623,8 +647,9 @@ public class ConsultationController {
 
         consultationFinancialService.apply(c);
 
-        // patient initiating consultation grants provider access (revocable by both parties)
-        if (isPatientActor) {
+        // patient initiating consultation grants provider access (revocable by both
+        // parties)
+        if (isPatientActor && Boolean.TRUE.equals(request.medicalPassportConsent())) {
             patientAccessService.grantAccessFromPatientToProvider(actor, patient.getId(), provider.getId());
         }
 
@@ -642,7 +667,8 @@ public class ConsultationController {
 
     @PatchMapping("/{id}")
     @Transactional
-    public ConsultationFlowResponse patch(Authentication authentication, @PathVariable("id") UUID id, @RequestBody PatchConsultationRequest request) {
+    public ConsultationFlowResponse patch(Authentication authentication, @PathVariable("id") UUID id,
+            @RequestBody PatchConsultationRequest request) {
         User actor = requireUser(authentication);
 
         if (!ProviderService.isProfessionalRole(actor.getRole()) || actor.getRole() == UserRole.ADMIN) {
@@ -665,16 +691,16 @@ public class ConsultationController {
         }
         final UUID patientId = c.getPatient().getId();
         log.info(
-                "[ConsultationController.patch] actorId={} providerId={} consultationId={} patientId={}", 
+                "[ConsultationController.patch] actorId={} providerId={} consultationId={} patientId={}",
                 actorId,
                 providerId,
                 id,
-                patientId
-        );
+                patientId);
         boolean bypassAccess = false;
         if (actor.getRole() == UserRole.DOCTOR && c.getDoctor() != null && c.getDoctor().getId() != null) {
             Doctor actorDoctor = doctorService.ensureForDoctorUser(actor);
-            bypassAccess = actorDoctor != null && actorDoctor.getId() != null && actorDoctor.getId().equals(c.getDoctor().getId());
+            bypassAccess = actorDoctor != null && actorDoctor.getId() != null
+                    && actorDoctor.getId().equals(c.getDoctor().getId());
         }
         if (!bypassAccess) {
             patientAccessService.requireProviderAccess(actor, patientId, Scope.CONSULTATIONS_WRITE);
@@ -697,7 +723,8 @@ public class ConsultationController {
                 c.setCancellationReason(finalReason);
                 c.setCancelledAt(Instant.now());
                 c.setCancelledByUser(actor);
-                auditLogService.log(actor, AuditEntityType.CONSULTATION, c.getId(), AuditLogAction.CANCEL, finalReason.name());
+                auditLogService.log(actor, AuditEntityType.CONSULTATION, c.getId(), AuditLogAction.CANCEL,
+                        finalReason.name());
             }
             if (request.diagnosis() != null) {
                 String trimmed = request.diagnosis().trim();
@@ -731,7 +758,8 @@ public class ConsultationController {
 
     @PostMapping("/{id}/complete")
     @Transactional
-    public ConsultationFlowResponse complete(Authentication authentication, @PathVariable("id") UUID id, @RequestBody PatchConsultationRequest request) {
+    public ConsultationFlowResponse complete(Authentication authentication, @PathVariable("id") UUID id,
+            @RequestBody PatchConsultationRequest request) {
         User actor = requireUser(authentication);
 
         if (!ProviderService.isProfessionalRole(actor.getRole()) || actor.getRole() == UserRole.ADMIN) {
@@ -754,12 +782,12 @@ public class ConsultationController {
                 actorId,
                 providerId,
                 id,
-                patientId
-        );
+                patientId);
         boolean bypassAccess = false;
         if (actor.getRole() == UserRole.DOCTOR && c.getDoctor() != null && c.getDoctor().getId() != null) {
             Doctor actorDoctor = doctorService.ensureForDoctorUser(actor);
-            bypassAccess = actorDoctor != null && actorDoctor.getId() != null && actorDoctor.getId().equals(c.getDoctor().getId());
+            bypassAccess = actorDoctor != null && actorDoctor.getId() != null
+                    && actorDoctor.getId().equals(c.getDoctor().getId());
         }
         if (!bypassAccess) {
             patientAccessService.requireProviderAccess(actor, patientId, Scope.CONSULTATIONS_WRITE);
@@ -804,7 +832,8 @@ public class ConsultationController {
             boolean bypassAccess = false;
             if (actor.getRole() == UserRole.DOCTOR && c.getDoctor() != null && c.getDoctor().getId() != null) {
                 Doctor actorDoctor = doctorService.ensureForDoctorUser(actor);
-                bypassAccess = actorDoctor != null && actorDoctor.getId() != null && actorDoctor.getId().equals(c.getDoctor().getId());
+                bypassAccess = actorDoctor != null && actorDoctor.getId() != null
+                        && actorDoctor.getId().equals(c.getDoctor().getId());
             }
             if (!bypassAccess) {
                 patientAccessService.requireProviderAccess(actor, c.getPatient().getId(), Scope.CONSULTATIONS_READ);
@@ -819,7 +848,8 @@ public class ConsultationController {
 
     @GetMapping("/{id}/prescription")
     @Transactional(readOnly = true)
-    public ConsultationPrescriptionResponse getPrescription(Authentication authentication, @PathVariable("id") UUID id) {
+    public ConsultationPrescriptionResponse getPrescription(Authentication authentication,
+            @PathVariable("id") UUID id) {
         User actor = requireUser(authentication);
 
         if (actor.getRole() == UserRole.PATIENT) {
@@ -837,7 +867,8 @@ public class ConsultationController {
             boolean bypassAccess = false;
             if (actor.getRole() == UserRole.DOCTOR && c.getDoctor() != null && c.getDoctor().getId() != null) {
                 Doctor actorDoctor = doctorService.ensureForDoctorUser(actor);
-                bypassAccess = actorDoctor != null && actorDoctor.getId() != null && actorDoctor.getId().equals(c.getDoctor().getId());
+                bypassAccess = actorDoctor != null && actorDoctor.getId() != null
+                        && actorDoctor.getId().equals(c.getDoctor().getId());
             }
             if (!bypassAccess) {
                 patientAccessService.requireProviderAccess(actor, c.getPatient().getId(), Scope.CONSULTATIONS_READ);
@@ -852,7 +883,8 @@ public class ConsultationController {
 
     @PutMapping("/{id}/prescription")
     @Transactional
-    public ConsultationPrescriptionResponse putPrescription(Authentication authentication, @PathVariable("id") UUID id, @RequestBody PrescriptionService.CreateRequest request) {
+    public ConsultationPrescriptionResponse putPrescription(Authentication authentication, @PathVariable("id") UUID id,
+            @RequestBody PrescriptionService.CreateRequest request) {
         User actor = requireUser(authentication);
         if (!ProviderService.isProfessionalRole(actor.getRole()) || actor.getRole() == UserRole.ADMIN) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Professional role required");
@@ -872,7 +904,8 @@ public class ConsultationController {
         boolean bypassAccess = false;
         if (actor.getRole() == UserRole.DOCTOR && c.getDoctor() != null && c.getDoctor().getId() != null) {
             Doctor actorDoctor = doctorService.ensureForDoctorUser(actor);
-            bypassAccess = actorDoctor != null && actorDoctor.getId() != null && actorDoctor.getId().equals(c.getDoctor().getId());
+            bypassAccess = actorDoctor != null && actorDoctor.getId() != null
+                    && actorDoctor.getId().equals(c.getDoctor().getId());
         }
         if (!bypassAccess) {
             patientAccessService.requireProviderAccess(actor, c.getPatient().getId(), Scope.CONSULTATIONS_WRITE);
@@ -896,7 +929,8 @@ public class ConsultationController {
             return null;
         }
 
-        List<PatientAllergy> allergies = patientAllergyRepository.findAllByPatientIdOrderByRecordedAtDesc(c.getPatient().getId());
+        List<PatientAllergy> allergies = patientAllergyRepository
+                .findAllByPatientIdOrderByRecordedAtDesc(c.getPatient().getId());
         for (PatientAllergy a : allergies) {
             if (a == null || a.getSubstance() == null) {
                 continue;

@@ -49,7 +49,10 @@ public class DoctorController {
     private final RevenueService revenueService;
     private final DoctorDocumentRepository doctorDocumentRepository;
 
-    public DoctorController(UserRepository userRepository, DoctorService doctorService, DoctorRepository doctorRepository, ProviderRepository providerRepository, ProviderService providerService, ConsultationRepository consultationRepository, RevenueService revenueService, DoctorDocumentRepository doctorDocumentRepository) {
+    public DoctorController(UserRepository userRepository, DoctorService doctorService,
+            DoctorRepository doctorRepository, ProviderRepository providerRepository, ProviderService providerService,
+            ConsultationRepository consultationRepository, RevenueService revenueService,
+            DoctorDocumentRepository doctorDocumentRepository) {
         this.userRepository = userRepository;
         this.doctorService = doctorService;
         this.doctorRepository = doctorRepository;
@@ -66,12 +69,15 @@ public class DoctorController {
     public record DoctorStatusResponse(UUID doctorId, boolean isOnline) {
     }
 
-    public record PatchDoctorProfileRequest(String specialty, Integer serviceRadiusKm, Integer yearsExperience) {
+    public record PatchDoctorProfileRequest(String specialty, Integer serviceRadiusKm, Integer yearsExperience,
+            Double latitude, Double longitude) {
     }
 
-    public record VerificationDocumentResponse(UUID id, String title, String fileUrl, DoctorDocumentStatus status, Instant createdAt) {
+    public record VerificationDocumentResponse(UUID id, String title, String fileUrl, DoctorDocumentStatus status,
+            Instant createdAt) {
         static VerificationDocumentResponse from(DoctorDocument doc) {
-            return new VerificationDocumentResponse(doc.getId(), doc.getTitle(), doc.getFileUrl(), doc.getStatus(), doc.getCreatedAt());
+            return new VerificationDocumentResponse(doc.getId(), doc.getTitle(), doc.getFileUrl(), doc.getStatus(),
+                    doc.getCreatedAt());
         }
     }
 
@@ -85,11 +91,13 @@ public class DoctorController {
             BigDecimal rating,
             Integer serviceRadiusKm,
             boolean isOnline,
-            List<VerificationDocumentResponse> verificationDocuments
-    ) {
+            Double latitude,
+            Double longitude,
+            List<VerificationDocumentResponse> verificationDocuments) {
         static DoctorProfileResponse from(Doctor d, List<DoctorDocument> docs) {
             if (d == null || d.getProvider() == null || d.getProvider().getUser() == null) {
-                return new DoctorProfileResponse(null, null, null, null, null, null, null, null, false, (docs == null ? List.of() : docs.stream().map(VerificationDocumentResponse::from).toList()));
+                return new DoctorProfileResponse(null, null, null, null, null, null, null, null, false, null, null,
+                        (docs == null ? List.of() : docs.stream().map(VerificationDocumentResponse::from).toList()));
             }
             return new DoctorProfileResponse(
                     d.getId(),
@@ -101,8 +109,9 @@ public class DoctorController {
                     d.getProvider().getRating(),
                     d.getProvider().getServiceRadiusKm(),
                     d.getProvider().isOnline(),
-                    (docs == null ? List.of() : docs.stream().map(VerificationDocumentResponse::from).toList())
-            );
+                    d.getProvider().getLatitude(),
+                    d.getProvider().getLongitude(),
+                    (docs == null ? List.of() : docs.stream().map(VerificationDocumentResponse::from).toList()));
         }
     }
 
@@ -122,8 +131,7 @@ public class DoctorController {
             BigDecimal fee,
             BigDecimal netAmount,
             BigDecimal omnicareFee,
-            Instant timestamp
-    ) {
+            Instant timestamp) {
         static ConsultationResponse from(Consultation c) {
             UUID patientUserId = null;
             UUID familyId = null;
@@ -140,7 +148,8 @@ public class DoctorController {
             if (c.getPatient() != null) {
                 if (c.getPatient().getUser() != null && c.getPatient().getUser().getName() != null) {
                     patientName = c.getPatient().getUser().getName();
-                } else if (c.getPatient().getFamilyMember() != null && c.getPatient().getFamilyMember().getFullName() != null) {
+                } else if (c.getPatient().getFamilyMember() != null
+                        && c.getPatient().getFamilyMember().getFullName() != null) {
                     patientName = c.getPatient().getFamilyMember().getFullName();
                 }
             }
@@ -163,8 +172,7 @@ public class DoctorController {
                     c.getFee(),
                     c.getNetAmount(),
                     c.getOmnicareFee(),
-                    c.getTimestamp()
-            );
+                    c.getTimestamp());
         }
     }
 
@@ -175,14 +183,14 @@ public class DoctorController {
             PaymentMethod paymentMethod,
             BigDecimal grossAmount,
             BigDecimal fee,
-            BigDecimal netAmount
-    ) {
+            BigDecimal netAmount) {
         static RecentTransaction from(Consultation c) {
             String patientName = null;
             if (c.getPatient() != null) {
                 if (c.getPatient().getUser() != null && c.getPatient().getUser().getName() != null) {
                     patientName = c.getPatient().getUser().getName();
-                } else if (c.getPatient().getFamilyMember() != null && c.getPatient().getFamilyMember().getFullName() != null) {
+                } else if (c.getPatient().getFamilyMember() != null
+                        && c.getPatient().getFamilyMember().getFullName() != null) {
                     patientName = c.getPatient().getFamilyMember().getFullName();
                 }
             }
@@ -194,8 +202,7 @@ public class DoctorController {
                     c.getPaymentMethod(),
                     c.getFee(),
                     c.getOmnicareFee(),
-                    c.getNetAmount()
-            );
+                    c.getNetAmount());
         }
     }
 
@@ -204,13 +211,13 @@ public class DoctorController {
             BigDecimal totalNetPart,
             BigDecimal omnicareCommission,
             int visitsCompletedCount,
-            List<RecentTransaction> recentTransactions
-    ) {
+            List<RecentTransaction> recentTransactions) {
     }
 
     @PatchMapping("/status")
     @Transactional
-    public DoctorStatusResponse patchStatus(Authentication authentication, @RequestBody PatchOnlineStatusRequest request) {
+    public DoctorStatusResponse patchStatus(Authentication authentication,
+            @RequestBody PatchOnlineStatusRequest request) {
         User actor = requireUser(authentication);
         requireDoctor(actor);
 
@@ -233,7 +240,8 @@ public class DoctorController {
 
     @PatchMapping("/profile")
     @Transactional
-    public DoctorProfileResponse patchProfile(Authentication authentication, @RequestBody PatchDoctorProfileRequest request) {
+    public DoctorProfileResponse patchProfile(Authentication authentication,
+            @RequestBody PatchDoctorProfileRequest request) {
         User actor = requireUser(authentication);
         requireDoctor(actor);
 
@@ -250,6 +258,12 @@ public class DoctorController {
             }
             if (request.yearsExperience() != null) {
                 doctor.setExperienceYears(request.yearsExperience());
+            }
+            if (request.latitude() != null) {
+                provider.setLatitude(request.latitude());
+            }
+            if (request.longitude() != null) {
+                provider.setLongitude(request.longitude());
             }
         }
 
@@ -287,7 +301,8 @@ public class DoctorController {
 
     @GetMapping("/revenue")
     @Transactional(readOnly = true)
-    public RevenueResponse revenue(Authentication authentication, @RequestParam(value = "limit", required = false) Integer limit) {
+    public RevenueResponse revenue(Authentication authentication,
+            @RequestParam(value = "limit", required = false) Integer limit) {
         User actor = requireUser(authentication);
         requireDoctor(actor);
 
@@ -307,8 +322,7 @@ public class DoctorController {
                 totals.totalNetPart(),
                 totals.omnicareCommission(),
                 totals.visitsCompletedCount(),
-                recent
-        );
+                recent);
     }
 
     private static String computeInitials(String name) {

@@ -46,6 +46,12 @@ public class Provider {
     @Column(name = "platform_fee_percentage", precision = 5, scale = 2)
     private BigDecimal platformFeePercentage;
 
+    @Column(name = "latitude")
+    private Double latitude;
+
+    @Column(name = "longitude")
+    private Double longitude;
+
     protected Provider() {
     }
 
@@ -114,5 +120,21 @@ public class Provider {
 
     public void setPlatformFeePercentage(BigDecimal platformFeePercentage) {
         this.platformFeePercentage = platformFeePercentage;
+    }
+
+    public Double getLatitude() {
+        return latitude;
+    }
+
+    public void setLatitude(Double latitude) {
+        this.latitude = latitude;
+    }
+
+    public Double getLongitude() {
+        return longitude;
+    }
+
+    public void setLongitude(Double longitude) {
+        this.longitude = longitude;
     }
 }

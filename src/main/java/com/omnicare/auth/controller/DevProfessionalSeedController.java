@@ -1,5 +1,6 @@
 package com.omnicare.auth.controller;
 
+import com.omnicare.auth.seed.RealisticDoctorsSeeder;
 import com.omnicare.doctor.model.Consultation;
 import com.omnicare.doctor.model.ConsultationCancellationReason;
 import com.omnicare.doctor.model.ConsultationStatus;
@@ -137,6 +138,7 @@ public class DevProfessionalSeedController {
     private final BodyPartCatalogRepository bodyPartCatalogRepository;
     private final PatientTraumaRepository patientTraumaRepository;
     private final TreatmentPlanRepository treatmentPlanRepository;
+    private final RealisticDoctorsSeeder realisticDoctorsSeeder;
 
     private final List<String> femaleFirstNames;
     private final List<String> maleFirstNames;
@@ -170,7 +172,8 @@ public class DevProfessionalSeedController {
             ConsultationMedicalActRepository consultationMedicalActRepository,
             BodyPartCatalogRepository bodyPartCatalogRepository,
             PatientTraumaRepository patientTraumaRepository,
-            TreatmentPlanRepository treatmentPlanRepository) {
+            TreatmentPlanRepository treatmentPlanRepository,
+            RealisticDoctorsSeeder realisticDoctorsSeeder) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.doctorRepository = doctorRepository;
@@ -199,6 +202,7 @@ public class DevProfessionalSeedController {
         this.bodyPartCatalogRepository = bodyPartCatalogRepository;
         this.patientTraumaRepository = patientTraumaRepository;
         this.treatmentPlanRepository = treatmentPlanRepository;
+        this.realisticDoctorsSeeder = realisticDoctorsSeeder;
 
         this.femaleFirstNames = loadNameListOrFallback("female_names.txt",
                 List.of("Eya", "Mariem", "Emna", "Sarra", "Salma", "Ines", "Yasmine"));
@@ -317,6 +321,12 @@ public class DevProfessionalSeedController {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "No active doctor selected");
         }
         return new ActiveDoctor(email, "Passw0rd!123");
+    }
+
+    @PostMapping("/seed/doctors")
+    @Transactional
+    public RealisticDoctorsSeeder.SeedSummary seedDoctors() {
+        return realisticDoctorsSeeder.seedDoctors();
     }
 
     @PostMapping("/ensure-fake-doctor")
@@ -1010,6 +1020,10 @@ public class DevProfessionalSeedController {
         }
         if (request.serviceRadiusKm() != null) {
             provider.setServiceRadiusKm(request.serviceRadiusKm());
+        }
+        if (provider.getLatitude() == null || provider.getLongitude() == null) {
+            provider.setLatitude(36.8 + (Math.random() * 0.1));
+            provider.setLongitude(10.1 + (Math.random() * 0.1));
         }
 
         providerRepository.save(provider);

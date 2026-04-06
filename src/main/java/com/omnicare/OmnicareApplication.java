@@ -13,7 +13,7 @@ import java.util.TimeZone;
 @ConfigurationPropertiesScan
 public class OmnicareApplication {
     public static void main(String[] args) {
-        Dotenv.configure().directory(".").filename("env").ignoreIfMissing().systemProperties().load();
+        Dotenv.configure().directory(".").filename(".env").ignoreIfMissing().systemProperties().load();
         TimeZone.setDefault(TimeZone.getTimeZone("UTC"));
         SpringApplication.run(OmnicareApplication.class, args);
     }

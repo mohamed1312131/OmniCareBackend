@@ -1,5 +1,6 @@
 package com.omnicare.doctor.controller;
 
+import com.omnicare.doctor.service.NearbyDoctorDiscoveryService;
 import com.omnicare.doctor.repository.DoctorRepository;
 import com.omnicare.doctor.model.Doctor;
 import com.omnicare.profile.repository.UserRepository;
@@ -24,10 +25,15 @@ public class DoctorSearchController {
 
     private final UserRepository userRepository;
     private final DoctorRepository doctorRepository;
+    private final NearbyDoctorDiscoveryService nearbyDoctorDiscoveryService;
 
-    public DoctorSearchController(UserRepository userRepository, DoctorRepository doctorRepository) {
+    public DoctorSearchController(
+            UserRepository userRepository,
+            DoctorRepository doctorRepository,
+            NearbyDoctorDiscoveryService nearbyDoctorDiscoveryService) {
         this.userRepository = userRepository;
         this.doctorRepository = doctorRepository;
+        this.nearbyDoctorDiscoveryService = nearbyDoctorDiscoveryService;
     }
 
     public record DoctorSearchResult(
@@ -38,8 +44,7 @@ public class DoctorSearchController {
             Integer experienceYears,
             BigDecimal rating,
             Integer serviceRadiusKm,
-            boolean isOnline
-    ) {
+            boolean isOnline) {
         static DoctorSearchResult from(Doctor d) {
             if (d == null || d.getProvider() == null || d.getProvider().getUser() == null) {
                 return new DoctorSearchResult(null, null, null, null, null, null, null, false);
@@ -52,8 +57,39 @@ public class DoctorSearchController {
                     d.getExperienceYears(),
                     d.getProvider().getRating(),
                     d.getProvider().getServiceRadiusKm(),
-                    d.getProvider().isOnline()
-            );
+                    d.getProvider().isOnline());
+        }
+    }
+
+    public record NearbyDoctorResponse(
+            UUID doctorId,
+            UUID providerId,
+            UUID userId,
+            String name,
+            String specialty,
+            Integer experienceYears,
+            BigDecimal rating,
+            Integer totalReviews,
+            Integer serviceRadiusKm,
+            boolean isOnline,
+            Double latitude,
+            Double longitude,
+            Double distanceKm) {
+        static NearbyDoctorResponse from(NearbyDoctorDiscoveryService.NearbyDoctorMatch match) {
+            return new NearbyDoctorResponse(
+                    match.doctorId(),
+                    match.providerId(),
+                    match.userId(),
+                    match.name(),
+                    match.specialty(),
+                    match.experienceYears(),
+                    match.rating(),
+                    match.totalReviews(),
+                    match.serviceRadiusKm(),
+                    match.isOnline(),
+                    match.providerLatitude(),
+                    match.providerLongitude(),
+                    match.distanceKm());
         }
     }
 
@@ -61,8 +97,7 @@ public class DoctorSearchController {
     @Transactional(readOnly = true)
     public List<DoctorSearchResult> list(
             Authentication authentication,
-            @RequestParam(value = "specialty", required = false) String specialty
-    ) {
+            @RequestParam(value = "specialty", required = false) String specialty) {
         requireAuthenticated(authentication);
 
         List<Doctor> doctors;
@@ -73,6 +108,24 @@ public class DoctorSearchController {
         }
 
         return doctors.stream().map(DoctorSearchResult::from).toList();
+    }
+
+    @GetMapping("/nearby")
+    @Transactional(readOnly = true)
+    public List<NearbyDoctorResponse> nearby(
+            Authentication authentication,
+            @RequestParam("lat") Double lat,
+            @RequestParam("lng") Double lng,
+            @RequestParam(value = "specialty", required = false) String specialty) {
+        requireAuthenticated(authentication);
+
+        if (lat == null || lng == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "lat and lng are required");
+        }
+
+        return nearbyDoctorDiscoveryService.findNearbyDoctors(lat, lng, specialty).stream()
+                .map(NearbyDoctorResponse::from)
+                .toList();
     }
 
     private void requireAuthenticated(Authentication authentication) {

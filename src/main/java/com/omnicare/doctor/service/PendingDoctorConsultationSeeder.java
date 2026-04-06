@@ -138,8 +138,12 @@ public class PendingDoctorConsultationSeeder implements ApplicationRunner {
 
         if (provider.getServiceRadiusKm() == null || provider.getServiceRadiusKm() <= 0) {
             provider.setServiceRadiusKm(50);
-            providerRepository.save(provider);
         }
+        if (provider.getLatitude() == null || provider.getLongitude() == null) {
+            provider.setLatitude(36.833);
+            provider.setLongitude(10.193);
+        }
+        providerRepository.save(provider);
 
         doctorRepository.findByProviderId(provider.getId())
                 .orElseGet(() -> doctorRepository.save(new Doctor(provider)));

@@ -47,7 +47,10 @@ public class DevAuthController {
     private final PatientService patientService;
     private final ProviderService providerService;
 
-    public DevAuthController(RequestMappingHandlerMapping handlerMapping, UserRepository userRepository, PasswordEncoder passwordEncoder, DoctorRepository doctorRepository, ProviderRepository providerRepository, PhoneOtpVerificationService phoneOtpVerificationService, PatientService patientService, ProviderService providerService) {
+    public DevAuthController(RequestMappingHandlerMapping handlerMapping, UserRepository userRepository,
+            PasswordEncoder passwordEncoder, DoctorRepository doctorRepository, ProviderRepository providerRepository,
+            PhoneOtpVerificationService phoneOtpVerificationService, PatientService patientService,
+            ProviderService providerService) {
         this.handlerMapping = handlerMapping;
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
@@ -73,8 +76,7 @@ public class DevAuthController {
             Integer totalReviews,
             BigDecimal rating,
             Boolean isOnline,
-            String medicalLicenseNumber
-    ) {
+            String medicalLicenseNumber) {
     }
 
     public record CreateDoctorResponse(String message) {
@@ -96,8 +98,7 @@ public class DevAuthController {
             Integer totalReviews,
             BigDecimal rating,
             Boolean isOnline,
-            String medicalLicenseNumber
-    ) {
+            String medicalLicenseNumber) {
     }
 
     public record CreateProfessionalResponse(String message) {
@@ -113,8 +114,7 @@ public class DevAuthController {
             LocalDate dateOfBirth,
             String gender,
             BloodGroup bloodGroup,
-            Map<String, Object> medicalInfo
-    ) {
+            Map<String, Object> medicalInfo) {
     }
 
     public record CreatePatientResponse(String message) {
@@ -141,7 +141,8 @@ public class DevAuthController {
     @PostMapping(value = "/create-doctor")
     @Transactional
     public CreateDoctorResponse createDoctor(@RequestBody CreateDoctorRequest request) {
-        if (request == null || request.email() == null || request.email().isBlank() || request.password() == null || request.password().isBlank()) {
+        if (request == null || request.email() == null || request.email().isBlank() || request.password() == null
+                || request.password().isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "email and password are required");
         }
 
@@ -190,8 +191,13 @@ public class DevAuthController {
         if (request.isOnline() != null) {
             provider.setOnline(request.isOnline());
         }
+        if (provider.getLatitude() == null || provider.getLongitude() == null) {
+            provider.setLatitude(36.8065);
+            provider.setLongitude(10.1815);
+        }
 
-        Doctor doctor = doctorRepository.findByProviderId(provider.getId()).orElseGet(() -> doctorRepository.save(new Doctor(provider)));
+        Doctor doctor = doctorRepository.findByProviderId(provider.getId())
+                .orElseGet(() -> doctorRepository.save(new Doctor(provider)));
         if (request.specialty() != null && !request.specialty().isBlank()) {
             doctor.setSpecialty(request.specialty().trim());
         }
@@ -211,7 +217,8 @@ public class DevAuthController {
     @PostMapping(value = "/create-professional")
     @Transactional
     public CreateProfessionalResponse createProfessional(@RequestBody CreateProfessionalRequest request) {
-        if (request == null || request.email() == null || request.email().isBlank() || request.password() == null || request.password().isBlank()) {
+        if (request == null || request.email() == null || request.email().isBlank() || request.password() == null
+                || request.password().isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "email and password are required");
         }
         if (request.role() == null) {
@@ -219,7 +226,8 @@ public class DevAuthController {
         }
 
         UserRole role = request.role();
-        if (!com.omnicare.provider.service.ProviderService.isProfessionalRole(role) || role == UserRole.ADMIN || role == UserRole.PATIENT) {
+        if (!com.omnicare.provider.service.ProviderService.isProfessionalRole(role) || role == UserRole.ADMIN
+                || role == UserRole.PATIENT) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unsupported professional role");
         }
 
@@ -268,10 +276,15 @@ public class DevAuthController {
         if (request.isOnline() != null) {
             provider.setOnline(request.isOnline());
         }
+        if (provider.getLatitude() == null || provider.getLongitude() == null) {
+            provider.setLatitude(36.8065);
+            provider.setLongitude(10.1815);
+        }
         providerRepository.save(provider);
 
         if (role == UserRole.DOCTOR) {
-            Doctor doctor = doctorRepository.findByProviderId(provider.getId()).orElseGet(() -> doctorRepository.save(new Doctor(provider)));
+            Doctor doctor = doctorRepository.findByProviderId(provider.getId())
+                    .orElseGet(() -> doctorRepository.save(new Doctor(provider)));
             if (request.specialty() != null && !request.specialty().isBlank()) {
                 doctor.setSpecialty(request.specialty().trim());
             }
@@ -290,7 +303,8 @@ public class DevAuthController {
     @PostMapping(value = "/create-patient")
     @Transactional
     public CreatePatientResponse createPatient(@RequestBody CreatePatientRequest request) {
-        if (request == null || request.email() == null || request.email().isBlank() || request.password() == null || request.password().isBlank()) {
+        if (request == null || request.email() == null || request.email().isBlank() || request.password() == null
+                || request.password().isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "email and password are required");
         }
 
@@ -340,7 +354,8 @@ public class DevAuthController {
     @PostMapping(value = "/create-admin")
     @Transactional
     public CreateAdminResponse createAdmin(@RequestBody CreateAdminRequest request) {
-        if (request == null || request.email() == null || request.email().isBlank() || request.password() == null || request.password().isBlank()) {
+        if (request == null || request.email() == null || request.email().isBlank() || request.password() == null
+                || request.password().isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "email and password are required");
         }
 
@@ -375,7 +390,8 @@ public class DevAuthController {
     @PostMapping(value = "/verify-phone-otp")
     @Transactional
     public VerifyPhoneOtpResponse verifyPhoneOtp(@RequestBody VerifyPhoneOtpRequest request) {
-        if (request == null || request.phoneNumber() == null || request.phoneNumber().isBlank() || request.otp() == null || request.otp().isBlank()) {
+        if (request == null || request.phoneNumber() == null || request.phoneNumber().isBlank() || request.otp() == null
+                || request.otp().isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "phoneNumber and otp are required");
         }
 
@@ -398,14 +414,16 @@ public class DevAuthController {
                 + "<body>\n"
                 + "  <h1>OAuth2 login success</h1>\n"
                 + (token == null
-                ? "  <p><b>No token</b> was provided on the query string.</p>\n"
-                : "  <p>Copy the JWT below and use it as <code>Authorization: Bearer &lt;token&gt;</code>.</p>\n")
+                        ? "  <p><b>No token</b> was provided on the query string.</p>\n"
+                        : "  <p>Copy the JWT below and use it as <code>Authorization: Bearer &lt;token&gt;</code>.</p>\n")
                 + (token == null
-                ? ""
-                : "  <p><a href=\"/dev/patient.html?token=" + safeToken + "\">Open Dev UI with this token</a></p>\n")
+                        ? ""
+                        : "  <p><a href=\"/dev/patient.html?token=" + safeToken
+                                + "\">Open Dev UI with this token</a></p>\n")
                 + "  <textarea readonly>" + safeToken + "</textarea>\n"
                 + "  <h2>Example</h2>\n"
-                + "  <pre>curl -H \"Authorization: Bearer " + safeToken + "\" http://localhost:8080/api/account/me</pre>\n"
+                + "  <pre>curl -H \"Authorization: Bearer " + safeToken
+                + "\" http://localhost:8080/api/account/me</pre>\n"
                 + "</body>\n"
                 + "</html>\n";
     }
@@ -415,7 +433,8 @@ public class DevAuthController {
     public String mappings() {
         return handlerMapping.getHandlerMethods().entrySet().stream()
                 .sorted(Comparator.comparing(e -> e.getKey().toString()))
-                .map(e -> e.getKey() + " -> " + e.getValue().getBeanType().getSimpleName() + "#" + e.getValue().getMethod().getName())
+                .map(e -> e.getKey() + " -> " + e.getValue().getBeanType().getSimpleName() + "#"
+                        + e.getValue().getMethod().getName())
                 .collect(Collectors.joining("\n"));
     }
 
