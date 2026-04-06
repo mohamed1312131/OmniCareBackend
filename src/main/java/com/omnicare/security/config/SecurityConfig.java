@@ -60,6 +60,8 @@ public class SecurityConfig {
                                 .authorizeHttpRequests(auth -> auth
                                                 .requestMatchers(org.springframework.http.HttpMethod.OPTIONS, "/**")
                                                 .permitAll()
+                                                .requestMatchers("/ws", "/ws/**")
+                                                .permitAll()
                                                 .requestMatchers("/", "/error", "/login/**", "/oauth2/**",
                                                                 "/auth/dev/**", "/dev/**")
                                                 .permitAll()
@@ -115,6 +117,8 @@ public class SecurityConfig {
                                                 .sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED))
                                 .authorizeHttpRequests(auth -> auth
                                                 .requestMatchers(org.springframework.http.HttpMethod.OPTIONS, "/**")
+                                                .permitAll()
+                                                .requestMatchers("/ws", "/ws/**")
                                                 .permitAll()
                                                 .requestMatchers("/", "/error", "/login/**", "/oauth2/**",
                                                                 "/auth/dev/**", "/dev/**")

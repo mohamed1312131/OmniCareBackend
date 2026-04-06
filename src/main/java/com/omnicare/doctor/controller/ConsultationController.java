@@ -25,6 +25,7 @@ import com.omnicare.prescription.service.PrescriptionService;
 import com.omnicare.prescription.model.Prescription;
 import com.omnicare.prescription.model.PrescriptionItem;
 import com.omnicare.doctor.service.ConsultationFinancialService;
+import com.omnicare.doctor.service.ConsultationRealtimeNotificationService;
 import com.omnicare.doctor.model.ConsultationMedicalAct;
 import com.omnicare.doctor.repository.ConsultationMedicalActRepository;
 import com.omnicare.medicalact.model.MedicalActCatalog;
@@ -81,6 +82,7 @@ public class ConsultationController {
     private final ConsultationMedicalActRepository consultationMedicalActRepository;
     private final BodyPartCatalogRepository bodyPartCatalogRepository;
     private final TreatmentPlanRepository treatmentPlanRepository;
+    private final ConsultationRealtimeNotificationService consultationRealtimeNotificationService;
 
     public ConsultationController(
             UserRepository userRepository,
@@ -98,7 +100,8 @@ public class ConsultationController {
             MedicalActCatalogRepository medicalActCatalogRepository,
             ConsultationMedicalActRepository consultationMedicalActRepository,
             BodyPartCatalogRepository bodyPartCatalogRepository,
-            TreatmentPlanRepository treatmentPlanRepository) {
+            TreatmentPlanRepository treatmentPlanRepository,
+            ConsultationRealtimeNotificationService consultationRealtimeNotificationService) {
         this.userRepository = userRepository;
         this.doctorService = doctorService;
         this.providerService = providerService;
@@ -115,6 +118,7 @@ public class ConsultationController {
         this.consultationMedicalActRepository = consultationMedicalActRepository;
         this.bodyPartCatalogRepository = bodyPartCatalogRepository;
         this.treatmentPlanRepository = treatmentPlanRepository;
+        this.consultationRealtimeNotificationService = consultationRealtimeNotificationService;
     }
 
     @GetMapping
@@ -654,6 +658,7 @@ public class ConsultationController {
         }
 
         Consultation saved = consultationRepository.save(c);
+        consultationRealtimeNotificationService.publishPendingConsultationSaved(saved);
 
         if (provider.getType() == ProviderType.NURSE && selectedActs != null && !selectedActs.isEmpty()) {
             List<ConsultationMedicalAct> rows = new ArrayList<>();

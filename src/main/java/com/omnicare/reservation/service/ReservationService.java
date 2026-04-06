@@ -5,6 +5,7 @@ import com.omnicare.doctor.model.Consultation;
 import com.omnicare.doctor.model.ConsultationStatus;
 import com.omnicare.doctor.repository.ConsultationRepository;
 import com.omnicare.doctor.service.ConsultationFinancialService;
+import com.omnicare.doctor.service.ConsultationRealtimeNotificationService;
 import com.omnicare.patient.model.Patient;
 import com.omnicare.patient.repository.PatientRepository;
 import com.omnicare.provider.model.Provider;
@@ -46,6 +47,7 @@ public class ReservationService {
     private final ConsultationRepository consultationRepository;
     private final ConsultationFinancialService consultationFinancialService;
     private final PatientAccessService patientAccessService;
+    private final ConsultationRealtimeNotificationService consultationRealtimeNotificationService;
 
     public ReservationService(
             ReservationRequestRepository reservationRequestRepository,
@@ -55,8 +57,8 @@ public class ReservationService {
             ProviderService providerService,
             ConsultationRepository consultationRepository,
             ConsultationFinancialService consultationFinancialService,
-            PatientAccessService patientAccessService
-    ) {
+            PatientAccessService patientAccessService,
+            ConsultationRealtimeNotificationService consultationRealtimeNotificationService) {
         this.reservationRequestRepository = reservationRequestRepository;
         this.availabilityIntentRepository = availabilityIntentRepository;
         this.proposedSlotRepository = proposedSlotRepository;
@@ -65,14 +67,14 @@ public class ReservationService {
         this.consultationRepository = consultationRepository;
         this.consultationFinancialService = consultationFinancialService;
         this.patientAccessService = patientAccessService;
+        this.consultationRealtimeNotificationService = consultationRealtimeNotificationService;
     }
 
     public record AvailabilityIntentCreate(
             DayOfWeek dayOfWeek,
             LocalDate specificDate,
             TimeWindow timeWindow,
-            LocalTime exactTime
-    ) {
+            LocalTime exactTime) {
     }
 
     public record CreateRequest(
@@ -81,8 +83,7 @@ public class ReservationService {
             LocalDate searchStartDate,
             LocalDate searchEndDate,
             String reason,
-            List<AvailabilityIntentCreate> intents
-    ) {
+            List<AvailabilityIntentCreate> intents) {
     }
 
     public record ProposeSlotsRequest(List<LocalDateTime> slots) {
@@ -126,7 +127,8 @@ public class ReservationService {
 
         Provider provider = providerService.requireById(request.providerId());
 
-        ReservationRequest row = new ReservationRequest(patient, provider, request.searchStartDate(), request.searchEndDate());
+        ReservationRequest row = new ReservationRequest(patient, provider, request.searchStartDate(),
+                request.searchEndDate());
         if (request.reason() != null) {
             String trimmed = request.reason().trim();
             row.setReason(trimmed.isEmpty() ? null : trimmed);
@@ -147,7 +149,8 @@ public class ReservationService {
                 if (i == null) {
                     continue;
                 }
-                AvailabilityIntent intent = new AvailabilityIntent(saved, i.timeWindow() == null ? TimeWindow.ANYTIME : i.timeWindow());
+                AvailabilityIntent intent = new AvailabilityIntent(saved,
+                        i.timeWindow() == null ? TimeWindow.ANYTIME : i.timeWindow());
                 intent.setDayOfWeek(i.dayOfWeek());
                 intent.setSpecificDate(i.specificDate());
                 intent.setExactTime(i.exactTime());
@@ -155,7 +158,8 @@ public class ReservationService {
                 boolean hasGeneral = intent.getDayOfWeek() != null;
                 boolean hasSpecific = intent.getSpecificDate() != null;
                 if (hasGeneral == hasSpecific) {
-                    throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Each intent must specify exactly one of dayOfWeek or specificDate");
+                    throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                            "Each intent must specify exactly one of dayOfWeek or specificDate");
                 }
                 availabilityIntentRepository.save(intent);
             }
@@ -173,7 +177,8 @@ public class ReservationService {
         if (actor.getRole() == UserRole.PATIENT) {
             Patient patient = patientRepository.findByUserId(actor.getId())
                     .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Patient not found"));
-            List<ReservationRequest> list = reservationRequestRepository.findAllByPatientIdOrderByCreatedAtDesc(patient.getId());
+            List<ReservationRequest> list = reservationRequestRepository
+                    .findAllByPatientIdOrderByCreatedAtDesc(patient.getId());
             if (status != null) {
                 return list.stream().filter(r -> r != null && r.getStatus() == status).toList();
             }
@@ -183,7 +188,8 @@ public class ReservationService {
         if (ProviderService.isProfessionalRole(actor.getRole()) && actor.getRole() != UserRole.ADMIN) {
             Provider provider = providerService.ensureForProfessionalUser(actor);
             if (status != null) {
-                return reservationRequestRepository.findAllByProviderIdAndStatusOrderByCreatedAtDesc(provider.getId(), status);
+                return reservationRequestRepository.findAllByProviderIdAndStatusOrderByCreatedAtDesc(provider.getId(),
+                        status);
             }
             return reservationRequestRepository.findAllByProviderIdOrderByCreatedAtDesc(provider.getId());
         }
@@ -211,11 +217,13 @@ public class ReservationService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "ReservationRequest not found"));
 
         touchExpiry(rr);
-        if (rr.getStatus() == ReservationRequestStatus.EXPIRED || rr.getStatus() == ReservationRequestStatus.CANCELLED) {
+        if (rr.getStatus() == ReservationRequestStatus.EXPIRED
+                || rr.getStatus() == ReservationRequestStatus.CANCELLED) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "ReservationRequest is not active");
         }
         if (rr.getStatus() != ReservationRequestStatus.PENDING) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "ReservationRequest must be PENDING to propose slots");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "ReservationRequest must be PENDING to propose slots");
         }
 
         List<LocalDateTime> cleaned = request.slots().stream()
@@ -261,7 +269,8 @@ public class ReservationService {
 
         touchExpiry(rr);
         if (rr.getStatus() != ReservationRequestStatus.PROPOSED) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "ReservationRequest must be PROPOSED to accept a slot");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "ReservationRequest must be PROPOSED to accept a slot");
         }
 
         ProposedSlot slot = proposedSlotRepository.findByIdAndRequestId(request.slotId(), rr.getId())
@@ -292,6 +301,7 @@ public class ReservationService {
         consultationFinancialService.apply(c);
 
         Consultation saved = consultationRepository.save(c);
+        consultationRealtimeNotificationService.publishPendingConsultationSaved(saved);
         return new AcceptanceResult(rr, saved);
     }
 
@@ -328,7 +338,8 @@ public class ReservationService {
         }
 
         Instant now = Instant.now();
-        if (rr.getStatus() == ReservationRequestStatus.CONFIRMED || rr.getStatus() == ReservationRequestStatus.CANCELLED || rr.getStatus() == ReservationRequestStatus.EXPIRED) {
+        if (rr.getStatus() == ReservationRequestStatus.CONFIRMED || rr.getStatus() == ReservationRequestStatus.CANCELLED
+                || rr.getStatus() == ReservationRequestStatus.EXPIRED) {
             return;
         }
 
@@ -339,7 +350,8 @@ public class ReservationService {
             return;
         }
 
-        if (rr.getStatus() == ReservationRequestStatus.PROPOSED && rr.getProposalExpiresAt() != null && now.isAfter(rr.getProposalExpiresAt())) {
+        if (rr.getStatus() == ReservationRequestStatus.PROPOSED && rr.getProposalExpiresAt() != null
+                && now.isAfter(rr.getProposalExpiresAt())) {
             rr.setStatus(ReservationRequestStatus.EXPIRED);
             rr.setUpdatedAt(now);
             reservationRequestRepository.save(rr);
