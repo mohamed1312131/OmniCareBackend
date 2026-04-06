@@ -19,7 +19,8 @@ function ConvertFrom-JsonSafe([string]$Raw) {
   if ($null -eq $Raw -or $Raw.Trim().Length -eq 0) { return $null }
   try {
     return ($Raw | ConvertFrom-Json -ErrorAction Stop)
-  } catch {
+  }
+  catch {
     return $null
   }
 }
@@ -27,7 +28,7 @@ function ConvertFrom-JsonSafe([string]$Raw) {
 function Maybe-AddChronicConditions([string]$token, [string]$patientId) {
   if (-not $token -or -not $patientId) { return }
 
-  $chronicPool = @('Diabetes','Hypertension','Asthma','Thyroid Disorder','Migraines','High Cholesterol')
+  $chronicPool = @('Diabetes', 'Hypertension', 'Asthma', 'Thyroid Disorder', 'Migraines', 'High Cholesterol')
 
   # ~91% chance to have at least one chronic condition (matches the old intent), else none.
   $addChronic = (Get-Random -Minimum 0 -Maximum 100) -lt 55
@@ -43,7 +44,7 @@ function Maybe-AddChronicConditions([string]$token, [string]$patientId) {
   $chosen = @($chronicPool | Get-Random -Count $ccCount)
   foreach ($name in $chosen) {
     if (-not $name) { continue }
-    $add = Invoke-Api -Method POST -Path "/api/patients/$patientId/conditions" -Token $token -Body @{ name=$name; notes="" }
+    $add = Invoke-Api -Method POST -Path "/api/patients/$patientId/conditions" -Token $token -Body @{ name = $name; notes = "" }
     if (-not $add.Ok) {
       continue
     }
@@ -59,15 +60,16 @@ function ConvertFrom-SecureStringPlain([securestring]$Secure) {
   $bstr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($Secure)
   try {
     return [Runtime.InteropServices.Marshal]::PtrToStringBSTR($bstr)
-  } finally {
+  }
+  finally {
     [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr)
   }
 }
 
 function Invoke-Api {
   param(
-    [Parameter(Mandatory=$true)][string]$Method,
-    [Parameter(Mandatory=$true)][string]$Path,
+    [Parameter(Mandatory = $true)][string]$Method,
+    [Parameter(Mandatory = $true)][string]$Path,
     [object]$Body = $null,
     [string]$Token = "",
     [hashtable]$Headers = @{}
@@ -87,8 +89,9 @@ function Invoke-Api {
 
   try {
     $resp = Invoke-WebRequest -Method $Method -Uri $uri -Headers $allHeaders -Body $payload -UseBasicParsing
-    return [pscustomobject]@{ Ok=$true; Status=$resp.StatusCode; Raw=$resp.Content; Json=(ConvertFrom-JsonSafe $resp.Content) }
-  } catch {
+    return [pscustomobject]@{ Ok = $true; Status = $resp.StatusCode; Raw = $resp.Content; Json = (ConvertFrom-JsonSafe $resp.Content) }
+  }
+  catch {
     $ex = $_.Exception
     $status = $null
     $raw = ""
@@ -98,12 +101,14 @@ function Invoke-Api {
       try {
         $sr = New-Object System.IO.StreamReader($ex.Response.GetResponseStream())
         $raw = $sr.ReadToEnd()
-      } catch { }
-    } else {
+      }
+      catch { }
+    }
+    else {
       $raw = ($_.ToString())
     }
 
-    return [pscustomobject]@{ Ok=$false; Status=$status; Raw=$raw; Json=(ConvertFrom-JsonSafe $raw) }
+    return [pscustomobject]@{ Ok = $false; Status = $status; Raw = $raw; Json = (ConvertFrom-JsonSafe $raw) }
   }
 }
 
@@ -120,10 +125,10 @@ function Get-RandItem([object[]]$list) {
 function Normalize-Token([string]$v) {
   if (-not $v) { return "" }
   $s = $v.Trim().ToLowerInvariant()
-  $s = $s -replace "'",""
-  $s = $s -replace "\s+","."
-  $s = $s -replace "[^a-z0-9._-]",""
-  $s = $s -replace "\.+","."
+  $s = $s -replace "'", ""
+  $s = $s -replace "\s+", "."
+  $s = $s -replace "[^a-z0-9._-]", ""
+  $s = $s -replace "\.+", "."
   $s = $s.Trim('.')
   return $s
 }
@@ -158,10 +163,109 @@ function New-ProfessionalEmail([string]$role, [string]$firstName, [string]$lastN
 }
 
 function New-TunisPhone() {
-  $starts = @('2','5','9')
+  $starts = @('2', '5', '9')
   $start = Get-Random -InputObject $starts
   $rest = Get-Random -Minimum 0 -Maximum 10000000
   return ($start + ($rest.ToString('0000000')))
+}
+
+function New-MedicalLicenseNumber([string]$role) {
+  $prefix = switch ($role) {
+    'DOCTOR' { 'MD' }
+    'NURSE' { 'RN' }
+    'KINE' { 'KIN' }
+    'PSYCHIATRIST' { 'PSY' }
+    default { 'PRO' }
+  }
+  $serial = Get-Random -Minimum 10000 -Maximum 100000
+  return "TN-$prefix-$serial"
+}
+
+function New-RandomCity() {
+  $cities = @('Tunis', 'La Marsa', 'Sfax', 'Sousse', 'Ariana', 'Ben Arous', 'Nabeul', 'Monastir')
+  return Get-Random -InputObject $cities
+}
+
+function New-RandomStreetAddress() {
+  $streets = @(
+    'Avenue Habib Bourguiba',
+    'Rue de Marseille',
+    'Rue Ibn Khaldoun',
+    'Avenue de la Liberté',
+    'Rue de Palestine',
+    'Avenue Hédi Nouira',
+    'Rue 8601',
+    'Avenue Taieb Mhiri'
+  )
+  $number = Get-Random -Minimum 1 -Maximum 220
+  return "$number $(Get-Random -InputObject $streets)"
+}
+
+function New-RandomOccupation([int]$ageYears) {
+  if ($ageYears -lt 6) { return 'Preschooler' }
+  if ($ageYears -lt 18) { return 'Student' }
+  $jobs = @('Teacher', 'Engineer', 'Accountant', 'Sales Manager', 'Nurse', 'Driver', 'Student', 'Designer', 'Technician', 'Entrepreneur')
+  return Get-Random -InputObject $jobs
+}
+
+function New-RandomMedicalInfo([string]$fullName, [string]$lastName, [datetime]$birthDate, [string]$gender) {
+  $ageYears = [Math]::Max(0, [int]([Math]::Floor(((Get-Date).Date - $birthDate.Date).TotalDays / 365.25)))
+
+  if ($ageYears -lt 6) {
+    $height = [Math]::Round((Get-Random -Minimum 85 -Maximum 121) + ((Get-Random -Minimum 0 -Maximum 10) / 10.0), 1)
+    $weight = [Math]::Round((Get-Random -Minimum 12 -Maximum 28) + ((Get-Random -Minimum 0 -Maximum 10) / 10.0), 1)
+  }
+  elseif ($ageYears -lt 18) {
+    $height = [Math]::Round((Get-Random -Minimum 130 -Maximum 181) + ((Get-Random -Minimum 0 -Maximum 10) / 10.0), 1)
+    $weight = [Math]::Round((Get-Random -Minimum 30 -Maximum 81) + ((Get-Random -Minimum 0 -Maximum 10) / 10.0), 1)
+  }
+  else {
+    $height = [Math]::Round((Get-Random -Minimum 150 -Maximum 196) + ((Get-Random -Minimum 0 -Maximum 10) / 10.0), 1)
+    $weight = [Math]::Round((Get-Random -Minimum 50 -Maximum 111) + ((Get-Random -Minimum 0 -Maximum 10) / 10.0), 1)
+  }
+
+  $city = New-RandomCity
+  $address = New-RandomStreetAddress
+  $insuranceProviders = @('CNAM', 'STAR Santé', 'COMAR Assurances', 'GAT Assurances', 'AMI Assurances')
+  $physicalActivity = @('Low', 'Moderate', 'Active') | Get-Random
+  $smokingStatus = if ($ageYears -lt 18) { 'Never' } else { @('Never', 'Former', 'Occasional') | Get-Random }
+  $alcoholUse = if ($ageYears -lt 18) { 'Never' } else { @('Never', 'Occasional', 'Social') | Get-Random }
+  $maritalStatus = if ($ageYears -lt 18) { 'Single' } else { @('Single', 'Married', 'Divorced') | Get-Random }
+  $occupation = New-RandomOccupation -ageYears $ageYears
+
+  $contactFirst = if ((Get-Random -Minimum 0 -Maximum 2) -eq 0) { Get-RandItem $femaleNames } else { Get-RandItem $maleNames }
+  if (-not $contactFirst) { $contactFirst = 'Amina' }
+  $contactLast = if ($lastName) { $lastName } else { (Get-RandItem $lastNames) }
+  if (-not $contactLast) { $contactLast = 'Ben Salem' }
+  $emergencyRelationship = if ($ageYears -lt 18) { @('Mother', 'Father', 'Guardian') | Get-Random } else { @('Spouse', 'Sibling', 'Parent', 'Friend') | Get-Random }
+
+  return @{
+    height                       = $height
+    weight                       = $weight
+    city                         = $city
+    address                      = $address
+    insuranceProvider            = (Get-Random -InputObject $insuranceProviders)
+    insurancePolicyNumber        = ("POL-" + (Get-Random -Minimum 100000 -Maximum 1000000))
+    emergencyContactName         = "$contactFirst $contactLast"
+    emergencyContactPhone        = (New-TunisPhone)
+    emergencyContactRelationship = $emergencyRelationship
+    occupation                   = $occupation
+    maritalStatus                = $maritalStatus
+    smokingStatus                = $smokingStatus
+    alcoholUse                   = $alcoholUse
+    physicalActivityLevel        = $physicalActivity
+    notes                        = "Seeded profile for $fullName"
+  }
+}
+
+function New-RelationshipDescription([string]$relationship, [string]$gender) {
+  switch ($relationship) {
+    'SPOUSE' { if ($gender -eq 'F') { return 'Wife' } else { return 'Husband' } }
+    'CHILD' { if ($gender -eq 'F') { return 'Daughter' } else { return 'Son' } }
+    'PARENT' { if ($gender -eq 'F') { return 'Mother' } else { return 'Father' } }
+    'SIBLING' { if ($gender -eq 'F') { return 'Sister' } else { return 'Brother' } }
+    default { return 'Family Member' }
+  }
 }
 
 function New-RandomBirthDate([int]$minAge, [int]$maxAge) {
@@ -171,7 +275,7 @@ function New-RandomBirthDate([int]$minAge, [int]$maxAge) {
 }
 
 function New-RandomBloodGroup() {
-  $all = @('A_POS','A_NEG','B_POS','B_NEG','AB_POS','AB_NEG','O_POS','O_NEG')
+  $all = @('A_POS', 'A_NEG', 'B_POS', 'B_NEG', 'AB_POS', 'AB_NEG', 'O_POS', 'O_NEG')
   return Get-Random -InputObject $all
 }
 
@@ -187,7 +291,7 @@ function Merge-MedicalInfo([hashtable]$baseInfo, [hashtable]$patchInfo) {
 }
 
 function Pick-Medication([string]$token) {
-  $queries = @('para','met','amo','vita','ibu','asp','ome','ins')
+  $queries = @('para', 'met', 'amo', 'vita', 'ibu', 'asp', 'ome', 'ins')
   $q = Get-Random -InputObject $queries
   $resp = Invoke-Api -Method GET -Path ("/api/medications/search?q=" + [uri]::EscapeDataString($q)) -Token $token
   if (-not $resp.Ok -or -not $resp.Json) { return $null }
@@ -202,12 +306,12 @@ function Pick-Medication([string]$token) {
 
 function New-RandomMedicationFrequency() {
   $freq = Get-Random -Minimum 1 -Maximum 4
-  $when = @('Morning','Evening','After meals','Before sleep') | Get-Random
+  $when = @('Morning', 'Evening', 'After meals', 'Before sleep') | Get-Random
   return "${freq}x/day ($when)"
 }
 
 function New-RandomMedicationDuration() {
-  $choices = @('5 days','7 days','10 days','14 days','30 days','Ongoing')
+  $choices = @('5 days', '7 days', '10 days', '14 days', '30 days', 'Ongoing')
   return Get-Random -InputObject $choices
 }
 
@@ -219,22 +323,22 @@ function Add-PatientMedications([string]$token, [string]$patientId, [ref]$medsCo
   if (-not $hasMeds) { return }
 
   $mCount = Get-Random -Minimum 1 -Maximum 4
-  for ($i=0; $i -lt $mCount; $i++) {
+  for ($i = 0; $i -lt $mCount; $i++) {
     $med = Pick-Medication -token $token
     if ($null -eq $med -or -not $med.id) { continue }
 
     $times = Get-Random -Minimum 1 -Maximum 4
     $freq = New-RandomMedicationFrequency
     $duration = Get-Random -Minimum 5 -Maximum 31
-    $start = (Get-Date).Date.AddDays(-(Get-Random -Minimum 0 -Maximum 60)).ToString('yyyy-MM-dd')
+    $start = (Get-Date).Date.AddDays( - (Get-Random -Minimum 0 -Maximum 60)).ToString('yyyy-MM-dd')
 
     $add = Invoke-Api -Method POST -Path "/api/patients/$patientId/medications" -Token $token -Body @{
       medicationId = "$($med.id)"
-      timesPerDay = $times
-      frequency = $freq
+      timesPerDay  = $times
+      frequency    = $freq
       durationDays = $duration
-      startDate = $start
-      notes = ""
+      startDate    = $start
+      notes        = ""
     }
 
     if ($add.Ok) {
@@ -247,8 +351,8 @@ function Build-CurrentMedicationItem($medication) {
   if ($null -eq $medication -or -not $medication.id) { return $null }
   $item = @{
     medicationId = "$($medication.id)"
-    frequency = (New-RandomMedicationFrequency)
-    duration = (New-RandomMedicationDuration)
+    frequency    = (New-RandomMedicationFrequency)
+    duration     = (New-RandomMedicationDuration)
   }
   if ($medication.name) { $item['name'] = $medication.name }
   if ($medication.dosage) { $item['dosage'] = $medication.dosage }
@@ -265,7 +369,8 @@ function Get-ExistingMedicalInfo([string]$token, [string]$path) {
         $existing = @{}
         foreach ($k in $current.Json.data.user.medicalInfo.Keys) { $existing[$k] = $current.Json.data.user.medicalInfo[$k] }
         return $existing
-      } catch { return @{} }
+      }
+      catch { return @{} }
     }
     return @{}
   }
@@ -282,7 +387,8 @@ function Get-ExistingMedicalInfo([string]$token, [string]$path) {
           $existing = @{}
           foreach ($k in $row.medicalInfo.Keys) { $existing[$k] = $row.medicalInfo[$k] }
           return $existing
-        } catch { return @{} }
+        }
+        catch { return @{} }
       }
     }
     return @{}
@@ -296,13 +402,13 @@ function Maybe-AddAllergies([string]$token, [string]$patientId, [ref]$allergiesC
   $has = (Get-Random -Minimum 0 -Maximum 100) -lt 65
   if (-not $has) { return }
 
-  $substances = @('Penicillin','Peanuts','Pollen','Dust','Latex','Ibuprofen')
+  $substances = @('Penicillin', 'Peanuts', 'Pollen', 'Dust', 'Latex', 'Ibuprofen')
   $count = Get-Random -Minimum 1 -Maximum 4
   $chosen = $substances | Get-Random -Count $count
 
   foreach ($s in $chosen) {
-    $sev = @('LOW','MEDIUM','HIGH') | Get-Random
-    $add = Invoke-Api -Method POST -Path "/api/patients/$patientId/allergies" -Token $token -Body @{ substance=$s; reaction=""; severity=$sev }
+    $sev = @('LOW', 'MEDIUM', 'HIGH') | Get-Random
+    $add = Invoke-Api -Method POST -Path "/api/patients/$patientId/allergies" -Token $token -Body @{ substance = $s; reaction = ""; severity = $sev }
     if ($add.Ok) {
       $allergiesCounter.Value++
     }
@@ -367,7 +473,7 @@ function Get-ProfessionalToken([string]$email) {
   if (-not $email) { return $null }
   if ($professionalTokenCache.ContainsKey($email)) { return $professionalTokenCache[$email] }
 
-  $login = Invoke-Api -Method POST -Path "/api/auth/login" -Body @{ email=$email; password=$PasswordPlain }
+  $login = Invoke-Api -Method POST -Path "/api/auth/login" -Body @{ email = $email; password = $PasswordPlain }
   $token = Get-AuthTokenFromLoginResponse $login.Json
   if (-not $token) { return $null }
   $professionalTokenCache[$email] = $token
@@ -381,13 +487,13 @@ function Grant-RandomProfessionalAccessToPatient([string]$patientToken, [string]
   $pick = $professionalAccounts | Get-Random
   if ($null -eq $pick -or -not $pick.email) { return }
 
-  $share = Invoke-Api -Method POST -Path "/api/access/share-token" -Token $patientToken -Body @{ patientId=$patientId; ttlSeconds=2592000 }
+  $share = Invoke-Api -Method POST -Path "/api/access/share-token" -Token $patientToken -Body @{ patientId = $patientId; ttlSeconds = 2592000 }
   if (-not $share.Ok -or -not $share.Json -or -not $share.Json.token) { return }
 
   $proToken = Get-ProfessionalToken -email $pick.email
   if (-not $proToken) { return }
 
-  $redeem = Invoke-Api -Method POST -Path "/api/access/redeem" -Token $proToken -Body @{ token=$share.Json.token }
+  $redeem = Invoke-Api -Method POST -Path "/api/access/redeem" -Token $proToken -Body @{ token = $share.Json.token }
   if (-not $redeem.Ok) { return }
 }
 
@@ -414,55 +520,57 @@ function Get-NextProfessionalNeedingGrants() {
 function Grant-ProfessionalAccessToPatient([string]$patientToken, [string]$patientId, [string]$professionalEmail) {
   if (-not $patientToken -or -not $patientId -or -not $professionalEmail) { return $false }
 
-  $share = Invoke-Api -Method POST -Path "/api/access/share-token" -Token $patientToken -Body @{ patientId=$patientId; ttlSeconds=2592000 }
+  $share = Invoke-Api -Method POST -Path "/api/access/share-token" -Token $patientToken -Body @{ patientId = $patientId; ttlSeconds = 2592000 }
   if (-not $share.Ok -or -not $share.Json -or -not $share.Json.token) { return $false }
 
   $proToken = Get-ProfessionalToken -email $professionalEmail
   if (-not $proToken) { return $false }
 
-  $redeem = Invoke-Api -Method POST -Path "/api/access/redeem" -Token $proToken -Body @{ token=$share.Json.token }
+  $redeem = Invoke-Api -Method POST -Path "/api/access/redeem" -Token $proToken -Body @{ token = $share.Json.token }
   if (-not $redeem.Ok) { return $false }
   return $true
 }
 
 function Create-Professional([string]$role, [string]$fullName, [string]$email, [string]$firstName, [string]$lastName, [string]$phone, [string]$dob, [string]$gender, [string]$specialty, [int]$yearsExp, [int]$radius, [int]$reviews, [double]$rating, [bool]$isOnline) {
   $resp = Invoke-Api -Method POST -Path "/auth/dev/create-professional" -Body @{
-    email=$email
-    name=$fullName
-    password=$PasswordPlain
-    role=$role
-    firstName=$firstName
-    lastName=$lastName
-    phoneNumber=$phone
-    dateOfBirth=$dob
-    gender=$gender
-    specialty=$specialty
-    yearsExperience=$yearsExp
-    serviceRadiusKm=$radius
-    totalReviews=$reviews
-    rating=$rating
-    isOnline=$isOnline
+    email                = $email
+    name                 = $fullName
+    password             = $PasswordPlain
+    role                 = $role
+    firstName            = $firstName
+    lastName             = $lastName
+    phoneNumber          = $phone
+    dateOfBirth          = $dob
+    gender               = $gender
+    specialty            = $specialty
+    yearsExperience      = $yearsExp
+    medicalLicenseNumber = (New-MedicalLicenseNumber -role $role)
+    serviceRadiusKm      = $radius
+    totalReviews         = $reviews
+    rating               = $rating
+    isOnline             = $isOnline
   }
   return $resp
 }
 
 if ($DoctorsCount -gt 0) {
   $specialties = @(
-    'Cardiology','Dermatology','General Practice','Pediatrics','Neurology',
-    'Orthopedics','Gynecology','ENT','Psychiatry','Endocrinology'
+    'Cardiology', 'Dermatology', 'General Practice', 'Pediatrics', 'Neurology',
+    'Orthopedics', 'Gynecology', 'ENT', 'Psychiatry', 'Endocrinology'
   )
 
   for ($di = 1; $di -le $DoctorsCount; $di++) {
     $isFemaleDoc = (Get-Random -Minimum 0 -Maximum 2) -eq 0
     if ($isFemaleDoc) {
       $dfirst = Get-RandItem $femaleNames
-    } else {
+    }
+    else {
       $dfirst = Get-RandItem $maleNames
     }
     $dlast = Get-RandItem $lastNames
 
     if (-not $dfirst -or -not $dlast) {
-      $failures.Add([pscustomobject]@{ Step='pickDoctorName'; PatientIndex=$di; Details='Empty name list' }) | Out-Null
+      $failures.Add([pscustomobject]@{ Step = 'pickDoctorName'; PatientIndex = $di; Details = 'Empty name list' }) | Out-Null
       continue
     }
 
@@ -478,45 +586,47 @@ if ($DoctorsCount -gt 0) {
     $reviews = Get-Random -Minimum 0 -Maximum 401
     $rating = [Math]::Round((Get-Random -Minimum 40 -Maximum 51) / 10.0, 1)
     $isOnline = (Get-Random -Minimum 0 -Maximum 100) -lt [int]($DoctorOnlineChance * 100)
+    $medicalLicenseNumber = New-MedicalLicenseNumber -role 'DOCTOR'
 
     $createDoc = Invoke-Api -Method POST -Path "/auth/dev/create-doctor" -Body @{
-      email=$dEmail
-      name=$dFullName
-      password=$PasswordPlain
-      firstName=$dfirst
-      lastName=$dlast
-      phoneNumber=$dPhone
-      dateOfBirth=$dDob
-      gender=$dGender
-      specialty=$spec
-      yearsExperience=$yearsExp
-      serviceRadiusKm=$radius
-      totalReviews=$reviews
-      rating=$rating
-      isOnline=$isOnline
+      email                = $dEmail
+      name                 = $dFullName
+      password             = $PasswordPlain
+      firstName            = $dfirst
+      lastName             = $dlast
+      phoneNumber          = $dPhone
+      dateOfBirth          = $dDob
+      gender               = $dGender
+      specialty            = $spec
+      yearsExperience      = $yearsExp
+      medicalLicenseNumber = $medicalLicenseNumber
+      serviceRadiusKm      = $radius
+      totalReviews         = $reviews
+      rating               = $rating
+      isOnline             = $isOnline
     }
 
     if (-not $createDoc.Ok -and $createDoc.Status -ne 409) {
-      $failures.Add([pscustomobject]@{ Step='createDoctor'; PatientIndex=$di; Details=($createDoc.Raw -replace "\s+"," ") }) | Out-Null
+      $failures.Add([pscustomobject]@{ Step = 'createDoctor'; PatientIndex = $di; Details = ($createDoc.Raw -replace "\s+", " ") }) | Out-Null
       continue
     }
 
     $createdDoctors++
-    $professionalAccounts.Add([pscustomobject]@{ role='DOCTOR'; name=$dFullName; email=$dEmail }) | Out-Null
+    $professionalAccounts.Add([pscustomobject]@{ role = 'DOCTOR'; name = $dFullName; email = $dEmail }) | Out-Null
     Write-Host ("Created Doctor: $dFullName ($spec)") -ForegroundColor Cyan
   }
 }
 
 if ($NursesCount -gt 0 -or $KinesCount -gt 0 -or $PsychiatristsCount -gt 0) {
   $specByRole = @{
-    'NURSE' = @('Home Care','Emergency','Pediatrics','General')
-    'KINE' = @('Physiotherapy','Sports Rehab','Orthopedics')
-    'PSYCHIATRIST' = @('Psychiatry','Mental Health')
+    'NURSE'        = @('Home Care', 'Emergency', 'Pediatrics', 'General')
+    'KINE'         = @('Physiotherapy', 'Sports Rehab', 'Orthopedics')
+    'PSYCHIATRIST' = @('Psychiatry', 'Mental Health')
   }
 
   $roleCounts = @{
-    'NURSE' = $NursesCount
-    'KINE' = $KinesCount
+    'NURSE'        = $NursesCount
+    'KINE'         = $KinesCount
     'PSYCHIATRIST' = $PsychiatristsCount
   }
 
@@ -546,14 +656,14 @@ if ($NursesCount -gt 0 -or $KinesCount -gt 0 -or $PsychiatristsCount -gt 0) {
 
       $createPro = Create-Professional -role $role -fullName $pFullName -email $pEmail -firstName $pfirst -lastName $plast -phone $pPhone -dob $pDob -gender $pGender -specialty $pSpec -yearsExp $pYearsExp -radius $pRadius -reviews $pReviews -rating $pRating -isOnline $pIsOnline
       if (-not $createPro.Ok -and $createPro.Status -ne 409) {
-        $rawOneLine = (($createPro.Raw) -replace "\s+"," ")
-        $failures.Add([pscustomobject]@{ Step='createProfessional'; PatientIndex=$ri; Details=("role=${role}; status=$($createPro.Status); " + $rawOneLine) }) | Out-Null
+        $rawOneLine = (($createPro.Raw) -replace "\s+", " ")
+        $failures.Add([pscustomobject]@{ Step = 'createProfessional'; PatientIndex = $ri; Details = ("role=${role}; status=$($createPro.Status); " + $rawOneLine) }) | Out-Null
         Write-Host ("Create-Professional FAILED role=${role} status=$($createPro.Status)") -ForegroundColor Yellow
         if ($createPro.Raw) { Write-Host $createPro.Raw -ForegroundColor DarkYellow }
         continue
       }
 
-      $professionalAccounts.Add([pscustomobject]@{ role=$role; name=$pFullName; email=$pEmail }) | Out-Null
+      $professionalAccounts.Add([pscustomobject]@{ role = $role; name = $pFullName; email = $pEmail }) | Out-Null
 
       if ($role -eq 'NURSE') { $createdNurses++ }
       elseif ($role -eq 'KINE') { $createdKines++ }
@@ -568,13 +678,14 @@ for ($pi = 1; $pi -le $PatientsCount; $pi++) {
   $isFemale = (Get-Random -Minimum 0 -Maximum 2) -eq 0
   if ($isFemale) {
     $first = Get-RandItem $femaleNames
-  } else {
+  }
+  else {
     $first = Get-RandItem $maleNames
   }
   $last = Get-RandItem $lastNames
 
   if (-not $first -or -not $last) {
-    $failures.Add([pscustomobject]@{ Step='pickName'; PatientIndex=$pi; Details='Empty name list' }) | Out-Null
+    $failures.Add([pscustomobject]@{ Step = 'pickName'; PatientIndex = $pi; Details = 'Empty name list' }) | Out-Null
     continue
   }
 
@@ -583,42 +694,43 @@ for ($pi = 1; $pi -le $PatientsCount; $pi++) {
   $phone = New-TunisPhone
   $bloodGroup = New-RandomBloodGroup
 
-  $dob = (New-RandomBirthDate -minAge 18 -maxAge 80).ToString('yyyy-MM-dd')
+  $dobDate = New-RandomBirthDate -minAge 18 -maxAge 80
+  $dob = $dobDate.ToString('yyyy-MM-dd')
   if ($isFemale) { $gender = 'F' } else { $gender = 'M' }
 
-  $baseMedicalInfo = @{}
+  $baseMedicalInfo = New-RandomMedicalInfo -fullName $fullName -lastName $last -birthDate $dobDate -gender $gender
 
   $create = Invoke-Api -Method POST -Path "/auth/dev/create-patient" -Body @{
-    email=$email
-    name=$fullName
-    password=$PasswordPlain
-    firstName=$first
-    lastName=$last
-    phoneNumber=$phone
-    dateOfBirth=$dob
-    gender=$gender
-    bloodGroup=$bloodGroup
-    medicalInfo=$baseMedicalInfo
+    email       = $email
+    name        = $fullName
+    password    = $PasswordPlain
+    firstName   = $first
+    lastName    = $last
+    phoneNumber = $phone
+    dateOfBirth = $dob
+    gender      = $gender
+    bloodGroup  = $bloodGroup
+    medicalInfo = $baseMedicalInfo
   }
   if (-not $create.Ok -and $create.Status -ne 409) {
-    $failures.Add([pscustomobject]@{ Step='createPatient'; PatientIndex=$pi; Details=($create.Raw -replace "\s+"," ") }) | Out-Null
+    $failures.Add([pscustomobject]@{ Step = 'createPatient'; PatientIndex = $pi; Details = ($create.Raw -replace "\s+", " ") }) | Out-Null
     continue
   }
 
-  $login = Invoke-Api -Method POST -Path "/api/auth/login" -Body @{ email=$email; password=$PasswordPlain }
+  $login = Invoke-Api -Method POST -Path "/api/auth/login" -Body @{ email = $email; password = $PasswordPlain }
   $token = $null
   if ($login.Ok -and $login.Json) {
     $token = Get-AuthTokenFromLoginResponse $login.Json
   }
   if (-not $token) {
-    $failures.Add([pscustomobject]@{ Step='login'; PatientIndex=$pi; Details=($login.Raw -replace "\s+"," ") }) | Out-Null
+    $failures.Add([pscustomobject]@{ Step = 'login'; PatientIndex = $pi; Details = ($login.Raw -replace "\s+", " ") }) | Out-Null
     continue
   }
 
   # resolve USER patientId
   $patients = Invoke-Api -Method GET -Path "/api/patients" -Token $token
   if (-not $patients.Ok -or -not $patients.Json) {
-    $failures.Add([pscustomobject]@{ Step='patientsList'; PatientIndex=$pi; Details=($patients.Raw -replace "\s+"," ") }) | Out-Null
+    $failures.Add([pscustomobject]@{ Step = 'patientsList'; PatientIndex = $pi; Details = ($patients.Raw -replace "\s+", " ") }) | Out-Null
     continue
   }
   $patientsArr = @($patients.Json)
@@ -626,7 +738,7 @@ for ($pi = 1; $pi -le $PatientsCount; $pi++) {
   if (-not $userRow) { $userRow = $patientsArr | Select-Object -First 1 }
   $userPatientId = $userRow.patientId
   if (-not $userPatientId) {
-    $failures.Add([pscustomobject]@{ Step='resolveUserPatientId'; PatientIndex=$pi; Details='Missing patientId' }) | Out-Null
+    $failures.Add([pscustomobject]@{ Step = 'resolveUserPatientId'; PatientIndex = $pi; Details = 'Missing patientId' }) | Out-Null
     continue
   }
 
@@ -637,7 +749,8 @@ for ($pi = 1; $pi -le $PatientsCount; $pi++) {
       if (-not $grantsPerProfessional.ContainsKey($targetPro.email)) { $grantsPerProfessional[$targetPro.email] = 0 }
       $grantsPerProfessional[$targetPro.email] = [int]$grantsPerProfessional[$targetPro.email] + 1
     }
-  } else {
+  }
+  else {
     Grant-RandomProfessionalAccessToPatient -patientToken $token -patientId $userPatientId
   }
 
@@ -645,7 +758,7 @@ for ($pi = 1; $pi -le $PatientsCount; $pi++) {
   # start by setting a base medicalInfo + bloodGroup; then maybe patch in meds/chronic
   $patchBase = Invoke-Api -Method PATCH -Path "/api/account/medical-passport" -Token $token -Body @{ bloodGroup = $bloodGroup; medicalInfo = $baseMedicalInfo }
   if (-not $patchBase.Ok) {
-    $failures.Add([pscustomobject]@{ Step='patchMedicalPassportBase'; PatientIndex=$pi; Details=($patchBase.Raw -replace "\s+"," ") }) | Out-Null
+    $failures.Add([pscustomobject]@{ Step = 'patchMedicalPassportBase'; PatientIndex = $pi; Details = ($patchBase.Raw -replace "\s+", " ") }) | Out-Null
   }
 
   Maybe-AddAllergies -token $token -patientId $userPatientId -allergiesCounter ([ref]$allergiesAdded)
@@ -660,12 +773,13 @@ for ($pi = 1; $pi -le $PatientsCount; $pi++) {
     $targetFamily = Get-Random -Minimum $MinFamilyMembers -Maximum ($MaxFamilyMembers + 1)
 
     for ($fi = 1; $fi -le $targetFamily; $fi++) {
-      $relPool = @('SPOUSE','CHILD','PARENT','SIBLING')
+      $relPool = @('SPOUSE', 'CHILD', 'PARENT', 'SIBLING')
       $rel = Get-Random -InputObject $relPool
       $fmFemale = (Get-Random -Minimum 0 -Maximum 2) -eq 0
       if ($fmFemale) {
         $fmFirst = Get-RandItem $femaleNames
-      } else {
+      }
+      else {
         $fmFirst = Get-RandItem $maleNames
       }
       $fmFull = "$fmFirst $last"
@@ -677,9 +791,21 @@ for ($pi = 1; $pi -le $PatientsCount; $pi++) {
       if ($fmFemale) { $fmGender = 'F' } else { $fmGender = 'M' }
 
       $fmBloodGroup = New-RandomBloodGroup
-      $fmBaseMedicalInfo = @{}
+      $fmPhone = New-TunisPhone
+      $fmRelationshipDescription = New-RelationshipDescription -relationship $rel -gender $fmGender
+      $fmBaseMedicalInfo = New-RandomMedicalInfo -fullName $fmFull -lastName $last -birthDate $fmDob -gender $fmGender
 
-      $createFm = Invoke-Api -Method POST -Path "/api/family" -Token $token -Body @{ fullName=$fmFull; relationship=$rel; birthDate=$fmDob.ToString('yyyy-MM-dd'); gender=$fmGender; medicalInfo=$fmBaseMedicalInfo }
+      $createFm = Invoke-Api -Method POST -Path "/api/family" -Token $token -Body @{
+        fullName                = $fmFull
+        firstName               = $fmFirst
+        lastName                = $last
+        relationship            = $rel
+        relationshipDescription = $fmRelationshipDescription
+        phoneNumber             = $fmPhone
+        birthDate               = $fmDob.ToString('yyyy-MM-dd')
+        gender                  = $fmGender
+        medicalInfo             = $fmBaseMedicalInfo
+      }
       if (-not $createFm.Ok -or -not $createFm.Json -or -not $createFm.Json.id) {
         continue
       }
@@ -729,7 +855,7 @@ if ($professionalAccounts.Count -gt 0) {
   Write-Host ""
   Write-Host "================ TEST CREDENTIALS ================" -ForegroundColor Cyan
   Write-Host ("Password for all seeded professionals: $PasswordPlain") -ForegroundColor DarkGray
-  $professionalAccounts | Sort-Object role,name | Select-Object role,name,email | Format-Table -AutoSize
+  $professionalAccounts | Sort-Object role, name | Select-Object role, name, email | Format-Table -AutoSize
 }
 
 if ($failures.Count -gt 0) {

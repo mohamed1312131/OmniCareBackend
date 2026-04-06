@@ -44,8 +44,7 @@ public class PendingDoctorConsultationSeeder implements ApplicationRunner {
             ProviderRepository providerRepository,
             DoctorRepository doctorRepository,
             PatientRepository patientRepository,
-            ConsultationRepository consultationRepository
-    ) {
+            ConsultationRepository consultationRepository) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.providerRepository = providerRepository;
@@ -59,7 +58,8 @@ public class PendingDoctorConsultationSeeder implements ApplicationRunner {
     public void run(ApplicationArguments args) {
         Provider doctorProvider = getOrCreateDoctorProvider();
         if (doctorProvider == null || doctorProvider.getId() == null) {
-            log.warn("[PendingDoctorConsultationSeeder] No DOCTOR provider available; skipping pending consultation seed.");
+            log.warn(
+                    "[PendingDoctorConsultationSeeder] No DOCTOR provider available; skipping pending consultation seed.");
             return;
         }
 
@@ -68,26 +68,30 @@ public class PendingDoctorConsultationSeeder implements ApplicationRunner {
             providerRepository.save(doctorProvider);
         }
 
-        final List<Consultation> existingPending = consultationRepository
-                .findAllByProviderIdAndStatusOrderByTimestampDesc(doctorProvider.getId(), ConsultationStatus.PENDING);
-
-        if (existingPending != null && !existingPending.isEmpty()) {
-            log.info("[PendingDoctorConsultationSeeder] Pending doctor consultation already exists (count={}).", existingPending.size());
-            return;
-        }
-
         Patient patient = getOrCreatePatient();
         if (patient == null || patient.getId() == null) {
             log.warn("[PendingDoctorConsultationSeeder] No patient available; skipping pending consultation seed.");
             return;
         }
 
-        Doctor doctor = doctorRepository.findByProviderId(doctorProvider.getId())
-                .orElseGet(() -> doctorRepository.save(new Doctor(doctorProvider)));
+        boolean alreadySeeded = consultationRepository.existsByProviderIdAndPatientIdAndStatusIn(
+                doctorProvider.getId(),
+                patient.getId(),
+                List.of(ConsultationStatus.PENDING));
+
+        if (alreadySeeded) {
+            log.info(
+                    "[PendingDoctorConsultationSeeder] Pending doctor consultation already exists for provider={} patient={}",
+                    doctorProvider.getId(), patient.getId());
+            return;
+        }
+
+        Doctor doctorDetails = doctorRepository.findByProviderId(doctorProvider.getId())
+                .orElseGet(() -> doctorRepository.saveAndFlush(new Doctor(doctorProvider)));
 
         Consultation c = new Consultation();
+        c.setDoctor(doctorDetails);
         c.setProvider(doctorProvider);
-        c.setDoctor(doctor);
         c.setPatient(patient);
         c.setStatus(ConsultationStatus.PENDING);
         c.setSymptoms("Severe headache + fever for 2 days");
@@ -98,7 +102,8 @@ public class PendingDoctorConsultationSeeder implements ApplicationRunner {
         c.setTimestamp(Instant.now());
 
         Consultation saved = consultationRepository.save(c);
-        log.info("[PendingDoctorConsultationSeeder] Seeded DOCTOR PENDING consultation id={} near Tunis.", saved.getId());
+        log.info("[PendingDoctorConsultationSeeder] Seeded DOCTOR PENDING consultation id={} near Tunis.",
+                saved.getId());
     }
 
     private Provider getOrCreateDoctorProvider() {
@@ -136,7 +141,8 @@ public class PendingDoctorConsultationSeeder implements ApplicationRunner {
             providerRepository.save(provider);
         }
 
-        doctorRepository.findByProviderId(provider.getId()).orElseGet(() -> doctorRepository.save(new Doctor(provider)));
+        doctorRepository.findByProviderId(provider.getId())
+                .orElseGet(() -> doctorRepository.save(new Doctor(provider)));
         return provider;
     }
 

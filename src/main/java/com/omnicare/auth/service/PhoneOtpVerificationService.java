@@ -35,6 +35,7 @@ public class PhoneOtpVerificationService {
         repository.deleteByPhoneNumber(phoneNumber);
 
         String otp = generateOtp();
+        System.out.println("DEBUG OTP: " + otp);
         String otpHash = sha256Hex(otp);
         Instant expiresAt = Instant.now().plus(10, ChronoUnit.MINUTES);
 
@@ -52,7 +53,8 @@ public class PhoneOtpVerificationService {
         }
 
         PhoneOtpVerification v = repository.findFirstByPhoneNumberOrderByExpiresAtDesc(phoneNumber)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No OTP requested for this phone number"));
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "No OTP requested for this phone number"));
 
         if (v.isConsumed()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "OTP already used");

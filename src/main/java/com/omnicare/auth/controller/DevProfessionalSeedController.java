@@ -79,17 +79,20 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.SecureRandom;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
-import java.util.Comparator;
+import java.util.EnumSet;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -99,7 +102,7 @@ import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 
 @RestController
-@RequestMapping({"/auth/dev", "/api/auth/dev"})
+@RequestMapping({ "/auth/dev", "/api/auth/dev" })
 public class DevProfessionalSeedController {
 
     private static final Logger log = LoggerFactory.getLogger(DevProfessionalSeedController.class);
@@ -167,8 +170,7 @@ public class DevProfessionalSeedController {
             ConsultationMedicalActRepository consultationMedicalActRepository,
             BodyPartCatalogRepository bodyPartCatalogRepository,
             PatientTraumaRepository patientTraumaRepository,
-            TreatmentPlanRepository treatmentPlanRepository
-    ) {
+            TreatmentPlanRepository treatmentPlanRepository) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.doctorRepository = doctorRepository;
@@ -198,9 +200,12 @@ public class DevProfessionalSeedController {
         this.patientTraumaRepository = patientTraumaRepository;
         this.treatmentPlanRepository = treatmentPlanRepository;
 
-        this.femaleFirstNames = loadNameListOrFallback("female_names.txt", List.of("Eya", "Mariem", "Emna", "Sarra", "Salma", "Ines", "Yasmine"));
-        this.maleFirstNames = loadNameListOrFallback("male_names.txt", List.of("Ahmed", "Mohamed", "Firas", "Karim", "Mehdi", "Amine", "Yassine"));
-        this.lastNames = loadNameListOrFallback("last_names.txt", List.of("Gharbi", "Hammami", "Ayari", "Mansour", "Trabelsi", "Masmoudi"));
+        this.femaleFirstNames = loadNameListOrFallback("female_names.txt",
+                List.of("Eya", "Mariem", "Emna", "Sarra", "Salma", "Ines", "Yasmine"));
+        this.maleFirstNames = loadNameListOrFallback("male_names.txt",
+                List.of("Ahmed", "Mohamed", "Firas", "Karim", "Mehdi", "Amine", "Yassine"));
+        this.lastNames = loadNameListOrFallback("last_names.txt",
+                List.of("Gharbi", "Hammami", "Ayari", "Mansour", "Trabelsi", "Masmoudi"));
     }
 
     private static List<String> loadNameListOrFallback(String fileName, List<String> fallback) {
@@ -273,17 +278,16 @@ public class DevProfessionalSeedController {
     @Transactional(readOnly = true)
     public List<DevAccount> listDevAccounts() {
         // Intentionally unauthenticated dev endpoint.
-        return userRepository.findAll().stream()
-                .filter(u -> u != null && u.getEmail() != null && !u.getEmail().isBlank())
-                .filter(u -> u.getRole() != null)
-                .filter(u -> u.getRole() == UserRole.PATIENT || ProviderService.isProfessionalRole(u.getRole()))
-                .sorted(
-                        Comparator
-                                .comparing((User u) -> u.getRole() == null ? "" : u.getRole().name())
-                                .thenComparing(u -> u.getName() == null ? "" : u.getName())
-                                .thenComparing(u -> u.getEmail() == null ? "" : u.getEmail())
-                )
-                .map(DevAccount::from)
+        return userRepository.findDevAccountSummaries(EnumSet.of(
+                UserRole.PATIENT,
+                UserRole.DOCTOR,
+                UserRole.NURSE,
+                UserRole.KINE,
+                UserRole.PSYCHIATRIST)).stream()
+                .map(row -> new DevAccount(
+                        row.getRole() == null ? null : row.getRole().name(),
+                        row.getName(),
+                        row.getEmail()))
                 .toList();
     }
 
@@ -337,7 +341,8 @@ public class DevProfessionalSeedController {
         Provider provider = providerService.ensureForProfessionalUser(doctorUser);
         providerRepository.save(provider);
 
-        Doctor doctor = doctorRepository.findByProviderId(provider.getId()).orElseGet(() -> doctorRepository.save(new Doctor(provider)));
+        Doctor doctor = doctorRepository.findByProviderId(provider.getId())
+                .orElseGet(() -> doctorRepository.save(new Doctor(provider)));
         if (doctor.getSpecialty() == null || doctor.getSpecialty().isBlank()) {
             doctor.setSpecialty("General Practitioner");
             doctorRepository.save(doctor);
@@ -372,20 +377,19 @@ public class DevProfessionalSeedController {
     public record AutoCompleteConsultationRequest(
             String diagnosis,
             String treatment,
-            String clinicalNotes
-    ) {
+            String clinicalNotes) {
     }
 
     public record AutoCompleteConsultationResponse(
             UUID consultationId,
             UUID prescriptionId,
-            int itemsCount
-    ) {
+            int itemsCount) {
     }
 
     @PostMapping("/consultations/{id}/auto-complete")
     @Transactional
-    public AutoCompleteConsultationResponse autoCompleteConsultation(@PathVariable("id") UUID consultationId, @RequestBody(required = false) AutoCompleteConsultationRequest request) {
+    public AutoCompleteConsultationResponse autoCompleteConsultation(@PathVariable("id") UUID consultationId,
+            @RequestBody(required = false) AutoCompleteConsultationRequest request) {
         if (consultationId == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "consultationId is required");
         }
@@ -393,14 +397,16 @@ public class DevProfessionalSeedController {
         // Ensure we have a dev doctor user to act as prescriber.
         EnsureFakeDoctorResponse fake = ensureFakeDoctor();
         User doctorUser = userRepository.findByEmail(fake.email())
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Fake doctor user not found"));
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
+                        "Fake doctor user not found"));
 
         Consultation c = consultationRepository.findById(consultationId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Consultation not found"));
 
         if (c.getDoctor() == null) {
             Doctor doctor = doctorRepository.findById(fake.doctorId())
-                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Fake doctor not found"));
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
+                            "Fake doctor not found"));
             c.setDoctor(doctor);
         }
 
@@ -452,21 +458,21 @@ public class DevProfessionalSeedController {
                     frequencyPeriodDays,
                     durationDays,
                     null,
-                    null
-            ));
+                    null));
         }
 
         PrescriptionService.CreateRequest presRequest = new PrescriptionService.CreateRequest(
                 null,
                 Instant.now(),
                 "Auto-generated ordonnance for consultation " + c.getId(),
-                items
-        );
+                items);
 
         try {
-            Prescription created = prescriptionService.createOrReplaceForConsultationAsDoctor(c.getId(), doctorUser.getId(), presRequest);
+            Prescription created = prescriptionService.createOrReplaceForConsultationAsDoctor(c.getId(),
+                    doctorUser.getId(), presRequest);
             prescriptionRepository.flush();
-            return new AutoCompleteConsultationResponse(c.getId(), created.getId(), created.getItems() == null ? 0 : created.getItems().size());
+            return new AutoCompleteConsultationResponse(c.getId(), created.getId(),
+                    created.getItems() == null ? 0 : created.getItems().size());
         } catch (ResponseStatusException ex) {
             throw ex;
         } catch (Exception ex) {
@@ -488,16 +494,14 @@ public class DevProfessionalSeedController {
             Integer totalReviews,
             Integer serviceRadiusKm,
             Integer consultationsCount,
-            Integer documentsCount
-    ) {
+            Integer documentsCount) {
     }
 
     public record SeedProfessionalResponse(
             String doctorEmail,
             String patientEmail,
             int consultationsCreated,
-            int documentsCreated
-    ) {
+            int documentsCreated) {
     }
 
     public record MegaSeedRequest(
@@ -505,14 +509,14 @@ public class DevProfessionalSeedController {
             Integer minYearsBack,
             Integer maxYearsBack,
             Integer minConsultationsPerPatient,
-            Integer maxConsultationsPerPatient
-    ) {
+            Integer maxConsultationsPerPatient) {
     }
 
     public record SeededAccount(String role, String name, String email, String password) {
     }
 
-    public record SeededPatient(String displayName, String email, UUID ownerUserId, UUID patientId, List<UUID> familyPatientIds, List<String> allergies) {
+    public record SeededPatient(String displayName, String email, UUID ownerUserId, UUID patientId,
+            List<UUID> familyPatientIds, List<String> allergies) {
     }
 
     public record MegaSeedResponse(
@@ -527,17 +531,22 @@ public class DevProfessionalSeedController {
             int reminderTimesCreated,
             int shareTokensCreated,
             int accessRevocationsCreated,
-            int medicalActsCreated
-    ) {
+            int medicalActsCreated) {
     }
 
     @PostMapping("/mega-seed")
     public MegaSeedResponse megaSeed(@RequestBody(required = false) MegaSeedRequest request) {
-        int showcasePatients = Math.max(1, Math.min(10, request == null || request.showcasePatients() == null ? 3 : request.showcasePatients()));
-        int minYearsBack = Math.max(0, Math.min(10, request == null || request.minYearsBack() == null ? 1 : request.minYearsBack()));
-        int maxYearsBack = Math.max(minYearsBack, Math.min(10, request == null || request.maxYearsBack() == null ? 3 : request.maxYearsBack()));
-        int minConsults = Math.max(1, Math.min(300, request == null || request.minConsultationsPerPatient() == null ? 20 : request.minConsultationsPerPatient()));
-        int maxConsults = Math.max(minConsults, Math.min(500, request == null || request.maxConsultationsPerPatient() == null ? 60 : request.maxConsultationsPerPatient()));
+        int showcasePatients = Math.max(1,
+                Math.min(10, request == null || request.showcasePatients() == null ? 3 : request.showcasePatients()));
+        int minYearsBack = Math.max(0,
+                Math.min(10, request == null || request.minYearsBack() == null ? 1 : request.minYearsBack()));
+        int maxYearsBack = Math.max(minYearsBack,
+                Math.min(10, request == null || request.maxYearsBack() == null ? 3 : request.maxYearsBack()));
+        int minConsults = Math.max(1, Math.min(300, request == null || request.minConsultationsPerPatient() == null ? 20
+                : request.minConsultationsPerPatient()));
+        int maxConsults = Math.max(minConsults,
+                Math.min(500, request == null || request.maxConsultationsPerPatient() == null ? 60
+                        : request.maxConsultationsPerPatient()));
 
         String password = "Passw0rd!123";
         Random r = new Random();
@@ -557,17 +566,21 @@ public class DevProfessionalSeedController {
         // Ensure a small pool of providers exists.
         User fakeDoctorUser = ensureFakeDoctorUser(password);
         Provider fakeDoctorProvider = providerService.ensureForProfessionalUser(fakeDoctorUser);
-        Doctor fakeDoctor = doctorRepository.findByProviderId(fakeDoctorProvider.getId()).orElseGet(() -> doctorRepository.save(new Doctor(fakeDoctorProvider)));
+        Doctor fakeDoctor = doctorRepository.findByProviderId(fakeDoctorProvider.getId())
+                .orElseGet(() -> doctorRepository.save(new Doctor(fakeDoctorProvider)));
 
         accounts.add(new SeededAccount("DOCTOR", fakeDoctorUser.getName(), fakeDoctorUser.getEmail(), password));
 
-        User nurseUser = ensureProfessionalUser("seed.nurse." + System.currentTimeMillis() + "@dev.local", "Seed Nurse", UserRole.NURSE, password);
+        User nurseUser = ensureProfessionalUser("seed.nurse." + System.currentTimeMillis() + "@dev.local", "Seed Nurse",
+                UserRole.NURSE, password);
         accounts.add(new SeededAccount("NURSE", nurseUser.getName(), nurseUser.getEmail(), password));
 
-        User kineUser = ensureProfessionalUser("seed.kine." + System.currentTimeMillis() + "@dev.local", "Seed Kine", UserRole.KINE, password);
+        User kineUser = ensureProfessionalUser("seed.kine." + System.currentTimeMillis() + "@dev.local", "Seed Kine",
+                UserRole.KINE, password);
         accounts.add(new SeededAccount("KINE", kineUser.getName(), kineUser.getEmail(), password));
 
-        User psychUser = ensureProfessionalUser("seed.psy." + System.currentTimeMillis() + "@dev.local", "Seed Psychiatrist", UserRole.PSYCHIATRIST, password);
+        User psychUser = ensureProfessionalUser("seed.psy." + System.currentTimeMillis() + "@dev.local",
+                "Seed Psychiatrist", UserRole.PSYCHIATRIST, password);
         accounts.add(new SeededAccount("PSYCHIATRIST", psychUser.getName(), psychUser.getEmail(), password));
 
         Provider nurseProvider = providerService.ensureForProfessionalUser(nurseUser);
@@ -620,7 +633,7 @@ public class DevProfessionalSeedController {
             // Kine ecosystem: create a trauma + treatment plan series for the root patient
             TreatmentPlan kinePlan = null;
             if (kineProvider != null && lumbar != null) {
-                PatientTrauma trauma = new PatientTrauma(rootPatient, lumbar, pick(r, new String[]{
+                PatientTrauma trauma = new PatientTrauma(rootPatient, lumbar, pick(r, new String[] {
                         "Lumbar Disc Herniation",
                         "Ankle Sprain",
                         "Rotator Cuff Injury",
@@ -642,7 +655,8 @@ public class DevProfessionalSeedController {
                 kinePlan = plan;
 
                 // Generate a cohesive series of sessions linked to this plan
-                int sessionsToCreate = plan.getSessionsCompleted() == null ? totalSessions : Math.max(1, Math.min(totalSessions, plan.getSessionsCompleted()));
+                int sessionsToCreate = plan.getSessionsCompleted() == null ? totalSessions
+                        : Math.max(1, Math.min(totalSessions, plan.getSessionsCompleted()));
                 Instant seriesStart = Instant.now().minus(7L * sessionsToCreate, ChronoUnit.DAYS);
                 for (int s = 0; s < sessionsToCreate; s++) {
                     Consultation kc = new Consultation();
@@ -661,8 +675,10 @@ public class DevProfessionalSeedController {
                     kc.setTreatmentPlan(plan);
                     kc.setAffectedAreas(List.of("back-lumbar"));
 
-                    // Base fee (acts will be added later); displacement fee is applied by ConsultationFinancialService
-                    kc.setFee(new BigDecimal("23.00").add(new BigDecimal(String.valueOf(r.nextInt(500))).movePointLeft(2)));
+                    // Base fee (acts will be added later); displacement fee is applied by
+                    // ConsultationFinancialService
+                    kc.setFee(new BigDecimal("23.00")
+                            .add(new BigDecimal(String.valueOf(r.nextInt(500))).movePointLeft(2)));
 
                     Instant when = seriesStart.plus(7L * s, ChronoUnit.DAYS);
                     kc.setTimestamp(when);
@@ -683,7 +699,8 @@ public class DevProfessionalSeedController {
             int familyCount = 1 + r.nextInt(3);
             List<UUID> familyPatientIds = new ArrayList<>();
             for (int fm = 0; fm < familyCount; fm++) {
-                FamilyMember member = new FamilyMember(patientUser, "Family Member " + (fm + 1) + " of " + patientName, pick(r, new String[]{"SPOUSE", "CHILD", "PARENT"}));
+                FamilyMember member = new FamilyMember(patientUser, "Family Member " + (fm + 1) + " of " + patientName,
+                        pick(r, new String[] { "SPOUSE", "CHILD", "PARENT" }));
                 member.setBirthDate(LocalDate.now().minusYears(5 + r.nextInt(70)).minusDays(r.nextInt(365)));
                 member.setGender(r.nextBoolean() ? "F" : "M");
                 member.setBloodGroup(pickFamilyBloodGroup(r, patientUser.getBloodGroup()));
@@ -697,9 +714,11 @@ public class DevProfessionalSeedController {
                 }
             }
 
-            patients.add(new SeededPatient(patientName, patientUser.getEmail(), patientUser.getId(), rootPatient.getId(), familyPatientIds, allergyList));
+            patients.add(new SeededPatient(patientName, patientUser.getEmail(), patientUser.getId(),
+                    rootPatient.getId(), familyPatientIds, allergyList));
 
-            // Grant access from this patient owner to all providers for both root + family patients
+            // Grant access from this patient owner to all providers for both root + family
+            // patients
             for (Patient p : collectPatientsForOwner(patientUser, rootPatient.getId(), familyPatientIds)) {
                 for (Provider prov : providerPool) {
                     try {
@@ -708,11 +727,14 @@ public class DevProfessionalSeedController {
                     }
 
                     if (r.nextInt(100) < 10) {
-                        if (patientProviderAccessRepository.findActiveByPatientIdAndProviderId(p.getId(), prov.getId()).isPresent()) {
-                            patientProviderAccessRepository.findActiveByPatientIdAndProviderId(p.getId(), prov.getId()).ifPresent(access -> {
-                                access.revoke(Instant.now().minus(10 + r.nextInt(1000), ChronoUnit.DAYS), patientUser);
-                                patientProviderAccessRepository.save(access);
-                            });
+                        if (patientProviderAccessRepository.findActiveByPatientIdAndProviderId(p.getId(), prov.getId())
+                                .isPresent()) {
+                            patientProviderAccessRepository.findActiveByPatientIdAndProviderId(p.getId(), prov.getId())
+                                    .ifPresent(access -> {
+                                        access.revoke(Instant.now().minus(10 + r.nextInt(1000), ChronoUnit.DAYS),
+                                                patientUser);
+                                        patientProviderAccessRepository.save(access);
+                                    });
                             accessRevocationsCreated++;
                         }
                     }
@@ -723,10 +745,12 @@ public class DevProfessionalSeedController {
             shareTokensCreated += seedShareTokens(r, rootPatient, patientUser);
 
             // Backdated history
-            int yearsBack = minYearsBack + (maxYearsBack == minYearsBack ? 0 : r.nextInt((maxYearsBack - minYearsBack) + 1));
+            int yearsBack = minYearsBack
+                    + (maxYearsBack == minYearsBack ? 0 : r.nextInt((maxYearsBack - minYearsBack) + 1));
             Instant start = Instant.now().minus(yearsBack * 365L, ChronoUnit.DAYS);
 
-            int consultCount = minConsults + (maxConsults == minConsults ? 0 : r.nextInt((maxConsults - minConsults) + 1));
+            int consultCount = minConsults
+                    + (maxConsults == minConsults ? 0 : r.nextInt((maxConsults - minConsults) + 1));
 
             List<UUID> allPatientIds = new ArrayList<>();
             allPatientIds.add(rootPatient.getId());
@@ -749,9 +773,11 @@ public class DevProfessionalSeedController {
                 }
                 c.setPatient(chosenPatient);
 
-                if (type == ProviderType.KINE && kinePlan != null && chosenPatient.getId() != null && chosenPatient.getId().equals(rootPatient.getId())) {
+                if (type == ProviderType.KINE && kinePlan != null && chosenPatient.getId() != null
+                        && chosenPatient.getId().equals(rootPatient.getId())) {
                     c.setTreatmentPlan(kinePlan);
-                    c.setLocationType(r.nextInt(100) < 30 ? ConsultationLocationType.HOME : ConsultationLocationType.CLINIC);
+                    c.setLocationType(
+                            r.nextInt(100) < 30 ? ConsultationLocationType.HOME : ConsultationLocationType.CLINIC);
                 }
 
                 Instant when = randomInstantBetween(r, start, Instant.now());
@@ -759,8 +785,9 @@ public class DevProfessionalSeedController {
 
                 c.setPainLevel(r.nextInt(11));
                 c.setAffectedAreas(pickAffectedAreas(r, bodyPartKeys));
-                c.setStreetAddress(pick(r, new String[]{"12 Avenue Habib Bourguiba", "44 Rue de Marseille", "9 Rue des Orangers"}));
-                c.setCity(pick(r, new String[]{"Tunis", "Sfax", "Sousse"}));
+                c.setStreetAddress(pick(r,
+                        new String[] { "12 Avenue Habib Bourguiba", "44 Rue de Marseille", "9 Rue des Orangers" }));
+                c.setCity(pick(r, new String[] { "Tunis", "Sfax", "Sousse" }));
                 c.setLatitude(36.8 + (r.nextDouble() * 0.2));
                 c.setLongitude(10.1 + (r.nextDouble() * 0.2));
 
@@ -770,25 +797,31 @@ public class DevProfessionalSeedController {
                     boolean cancelledByPatient = r.nextBoolean();
                     c.setCancelledAt(when.minus(2 + r.nextInt(240), ChronoUnit.MINUTES));
                     c.setCancelledByUser(cancelledByPatient ? patientUser : prov.getUser());
-                    c.setCancellationReason(cancelledByPatient ? ConsultationCancellationReason.PATIENT_CANCELLED : ConsultationCancellationReason.PROVIDER_CANCELLED);
+                    c.setCancellationReason(cancelledByPatient ? ConsultationCancellationReason.PATIENT_CANCELLED
+                            : ConsultationCancellationReason.PROVIDER_CANCELLED);
                     consultationsCancelled++;
                 } else {
                     c.setStatus(ConsultationStatus.COMPLETED);
-                    c.setSymptoms(pick(r, new String[]{"Headache and fatigue", "Sore throat", "Back pain", "Anxiety", "Fever"}));
-                    c.setDiagnosis(pick(r, new String[]{"Viral infection", "Muscle strain", "Stress", "Seasonal allergy", "Follow-up required"}));
-                    c.setTreatment(pick(r, new String[]{"Rest + hydration", "Paracetamol for 3 days", "Physiotherapy sessions", "Breathing exercises", "Vitamin C"}));
+                    c.setSymptoms(pick(r,
+                            new String[] { "Headache and fatigue", "Sore throat", "Back pain", "Anxiety", "Fever" }));
+                    c.setDiagnosis(pick(r, new String[] { "Viral infection", "Muscle strain", "Stress",
+                            "Seasonal allergy", "Follow-up required" }));
+                    c.setTreatment(pick(r, new String[] { "Rest + hydration", "Paracetamol for 3 days",
+                            "Physiotherapy sessions", "Breathing exercises", "Vitamin C" }));
                     c.setClinicalNotes("Seeded historical consultation");
                     c.setDurationMinutes(10 + r.nextInt(31));
                     c.setPaymentMethod(r.nextBoolean() ? PaymentMethod.DIGITAL : PaymentMethod.CASH);
 
                     if (type == ProviderType.NURSE) {
-                        List<MedicalActCatalog> nurseActs = medicalActCatalogRepository.findAllByProviderTypeAndActiveTrueOrderByNameAsc(ProviderType.NURSE);
+                        List<MedicalActCatalog> nurseActs = medicalActCatalogRepository
+                                .findAllByProviderTypeAndActiveTrueOrderByNameAsc(ProviderType.NURSE);
                         if (!nurseActs.isEmpty()) {
                             int count = nurseActs.size() == 1 ? 1 : (r.nextInt(100) < 65 ? 1 : 2);
                             List<MedicalActCatalog> selected = new ArrayList<>();
                             for (int pick = 0; pick < count; pick++) {
                                 MedicalActCatalog a = nurseActs.get(r.nextInt(nurseActs.size()));
-                                if (selected.stream().noneMatch(x -> x.getId() != null && x.getId().equals(a.getId()))) {
+                                if (selected.stream()
+                                        .noneMatch(x -> x.getId() != null && x.getId().equals(a.getId()))) {
                                     selected.add(a);
                                 }
                             }
@@ -804,13 +837,16 @@ public class DevProfessionalSeedController {
                             }
                             c.setFee(fee);
                             if (hasOther) {
-                                c.setOtherMedicalActText(pick(r, new String[]{"Other / complex home care", "Complex care (details in notes)", "Unlisted nursing procedure"}));
+                                c.setOtherMedicalActText(pick(r, new String[] { "Other / complex home care",
+                                        "Complex care (details in notes)", "Unlisted nursing procedure" }));
                             }
                         } else {
-                            c.setFee(new BigDecimal("25.00").add(new BigDecimal(String.valueOf(r.nextInt(40))).movePointLeft(2)));
+                            c.setFee(new BigDecimal("25.00")
+                                    .add(new BigDecimal(String.valueOf(r.nextInt(40))).movePointLeft(2)));
                         }
                     } else {
-                        c.setFee(new BigDecimal("25.00").add(new BigDecimal(String.valueOf(r.nextInt(40))).movePointLeft(2)));
+                        c.setFee(new BigDecimal("25.00")
+                                .add(new BigDecimal(String.valueOf(r.nextInt(40))).movePointLeft(2)));
                     }
                 }
 
@@ -820,7 +856,8 @@ public class DevProfessionalSeedController {
                 consultationsCreated++;
 
                 if (saved.getStatus() == ConsultationStatus.COMPLETED && type == ProviderType.NURSE) {
-                    List<MedicalActCatalog> nurseActs = medicalActCatalogRepository.findAllByProviderTypeAndActiveTrueOrderByNameAsc(ProviderType.NURSE);
+                    List<MedicalActCatalog> nurseActs = medicalActCatalogRepository
+                            .findAllByProviderTypeAndActiveTrueOrderByNameAsc(ProviderType.NURSE);
                     if (!nurseActs.isEmpty()) {
                         int count = nurseActs.size() == 1 ? 1 : (r.nextInt(100) < 65 ? 1 : 2);
                         List<MedicalActCatalog> selected = new ArrayList<>();
@@ -838,7 +875,8 @@ public class DevProfessionalSeedController {
                     }
                 }
 
-                // If completed and prescriber type, try to create prescription via service to enforce allergy blocking.
+                // If completed and prescriber type, try to create prescription via service to
+                // enforce allergy blocking.
                 boolean canPrescribe = saved.getStatus() == ConsultationStatus.COMPLETED && type == ProviderType.DOCTOR;
                 if (canPrescribe && r.nextInt(100) < 70) {
                     User prescriber = prov.getUser();
@@ -857,36 +895,37 @@ public class DevProfessionalSeedController {
                         List<PrescriptionService.CreateItemRequest> items = List.of(
                                 new PrescriptionService.CreateItemRequest(
                                         med.getId(),
-                                        new BigDecimal(pick(r, new String[]{"250", "500", "1000"})),
-                                        pick(r, new String[]{"mg", "ml", "puff"}),
+                                        new BigDecimal(pick(r, new String[] { "250", "500", "1000" })),
+                                        pick(r, new String[] { "mg", "ml", "puff" }),
                                         1 + r.nextInt(3),
                                         1,
                                         3 + r.nextInt(12),
                                         LocalDate.ofInstant(saved.getTimestamp(), java.time.ZoneOffset.UTC),
-                                        pick(r, new String[]{"After meals", "Before sleep", "With plenty of water"})
-                                )
-                        );
+                                        pick(r, new String[] { "After meals", "Before sleep",
+                                                "With plenty of water" })));
 
                         PrescriptionService.CreateRequest presReq = new PrescriptionService.CreateRequest(
                                 null,
                                 saved.getTimestamp(),
                                 "Seeded prescription for consultation " + saved.getId(),
-                                items
-                        );
+                                items);
 
                         try {
-                            Prescription p = prescriptionService.createOrReplaceForConsultationAsDoctor(saved.getId(), prescriber.getId(), presReq);
+                            Prescription p = prescriptionService.createOrReplaceForConsultationAsDoctor(saved.getId(),
+                                    prescriber.getId(), presReq);
                             p.setIssuedAt(saved.getTimestamp());
                             prescriptionRepository.save(p);
                             prescriptionsCreated++;
                             created = true;
 
                             // Deep-fill patient medications + reminders
-                            remindersCreated += deepFillMedsAndRemindersFromPrescription(r, p, prescriber, saved.getTimestamp());
+                            remindersCreated += deepFillMedsAndRemindersFromPrescription(r, p, prescriber,
+                                    saved.getTimestamp());
                             reminderTimesCreated += lastCreatedReminderTimes;
 
                             // Create some medical acts performed by nurse/kine linked to this prescription
-                            medicalActsCreated += seedMedicalActs(r, p, nurseProvider, kineProvider, saved.getTimestamp());
+                            medicalActsCreated += seedMedicalActs(r, p, nurseProvider, kineProvider,
+                                    saved.getTimestamp());
                         } catch (org.springframework.web.server.ResponseStatusException ex) {
                             if (ex.getStatusCode() == HttpStatus.CONFLICT) {
                                 prescriptionsBlocked++;
@@ -899,12 +938,17 @@ public class DevProfessionalSeedController {
             }
         }
 
-        log.info("MEGA-SEED complete: showcasePatients={}, consultationsCreated={}, cancelled={}, prescriptionsCreated={}, prescriptionsBlockedByAllergy={}", showcasePatients, consultationsCreated, consultationsCancelled, prescriptionsCreated, prescriptionsBlocked);
+        log.info(
+                "MEGA-SEED complete: showcasePatients={}, consultationsCreated={}, cancelled={}, prescriptionsCreated={}, prescriptionsBlockedByAllergy={}",
+                showcasePatients, consultationsCreated, consultationsCancelled, prescriptionsCreated,
+                prescriptionsBlocked);
         for (SeededAccount acc : accounts) {
             log.info("MEGA-SEED account: role={} email={} password={}", acc.role(), acc.email(), acc.password());
         }
         for (SeededPatient p : patients) {
-            log.info("MEGA-SEED patient: name={} email={} patientId={} familyCount={} allergies={}", p.displayName(), p.email(), p.patientId(), p.familyPatientIds() == null ? 0 : p.familyPatientIds().size(), p.allergies());
+            log.info("MEGA-SEED patient: name={} email={} patientId={} familyCount={} allergies={}", p.displayName(),
+                    p.email(), p.patientId(), p.familyPatientIds() == null ? 0 : p.familyPatientIds().size(),
+                    p.allergies());
         }
 
         return new MegaSeedResponse(
@@ -919,8 +963,7 @@ public class DevProfessionalSeedController {
                 reminderTimesCreated,
                 shareTokensCreated,
                 accessRevocationsCreated,
-                medicalActsCreated
-        );
+                medicalActsCreated);
     }
 
     @PostMapping("/seed-professional")
@@ -933,8 +976,10 @@ public class DevProfessionalSeedController {
         String doctorEmail = request.doctorEmail().trim().toLowerCase();
 
         User doctorUser = userRepository.findByEmail(doctorEmail).orElseGet(() -> {
-            String pwd = (request.doctorPassword() == null || request.doctorPassword().isBlank()) ? "Passw0rd!123" : request.doctorPassword();
-            String name = (request.doctorName() == null || request.doctorName().isBlank()) ? doctorEmail : request.doctorName().trim();
+            String pwd = (request.doctorPassword() == null || request.doctorPassword().isBlank()) ? "Passw0rd!123"
+                    : request.doctorPassword();
+            String name = (request.doctorName() == null || request.doctorName().isBlank()) ? doctorEmail
+                    : request.doctorName().trim();
 
             User u = new User(doctorEmail, name);
             u.setRole(UserRole.DOCTOR);
@@ -951,7 +996,8 @@ public class DevProfessionalSeedController {
         Provider provider = providerService.ensureForProfessionalUser(doctorUser);
         providerRepository.save(provider);
 
-        Doctor doctor = doctorRepository.findByProviderId(provider.getId()).orElseGet(() -> doctorRepository.save(new Doctor(provider)));
+        Doctor doctor = doctorRepository.findByProviderId(provider.getId())
+                .orElseGet(() -> doctorRepository.save(new Doctor(provider)));
 
         if (request.specialty() != null) {
             doctor.setSpecialty(request.specialty().trim());
@@ -980,7 +1026,8 @@ public class DevProfessionalSeedController {
 
         Patient patient = patientService.ensureForUser(patientUser);
 
-        int consultationsCount = request.consultationsCount() == null ? 5 : Math.max(0, Math.min(50, request.consultationsCount()));
+        int consultationsCount = request.consultationsCount() == null ? 5
+                : Math.max(0, Math.min(50, request.consultationsCount()));
         int documentsCount = request.documentsCount() == null ? 2 : Math.max(0, Math.min(10, request.documentsCount()));
 
         Random r = new Random();
@@ -1007,7 +1054,8 @@ public class DevProfessionalSeedController {
             createdConsultations.add(saved);
 
             // Create a realistic prescription for most completed consultations.
-            // Note: prescriptions are linked to patient_id and prescriber_user_id (not consultation_id).
+            // Note: prescriptions are linked to patient_id and prescriber_user_id (not
+            // consultation_id).
             boolean shouldCreatePrescription = r.nextInt(100) < 75;
             if (shouldCreatePrescription) {
                 Prescription p = new Prescription(patient, doctorUser, when);
@@ -1024,7 +1072,8 @@ public class DevProfessionalSeedController {
                     int frequencyPeriodDays = 1;
                     int durationDays = 3 + r.nextInt(8);
 
-                    PrescriptionItem item = new PrescriptionItem(med, frequencyTimes, frequencyPeriodDays, durationDays);
+                    PrescriptionItem item = new PrescriptionItem(med, frequencyTimes, frequencyPeriodDays,
+                            durationDays);
                     if (r.nextBoolean()) {
                         item.setDoseUnit("mg");
                     }
@@ -1089,8 +1138,8 @@ public class DevProfessionalSeedController {
     }
 
     private List<String> seedShowcaseAllergies(Random r, Patient patient) {
-        String[] substances = new String[]{"Penicillin", "Ibuprofen", "Aspirin", "Amoxicillin", "Latex", "Peanuts"};
-        String[] reactions = new String[]{"Anaphylaxis", "Mild rash", "Hives", "Nausea", "Swelling"};
+        String[] substances = new String[] { "Penicillin", "Ibuprofen", "Aspirin", "Amoxicillin", "Latex", "Peanuts" };
+        String[] reactions = new String[] { "Anaphylaxis", "Mild rash", "Hives", "Nausea", "Swelling" };
         int count = 1 + r.nextInt(3);
         List<String> created = new ArrayList<>();
         for (int i = 0; i < count; i++) {
@@ -1101,7 +1150,8 @@ public class DevProfessionalSeedController {
             PatientAllergy allergy = new PatientAllergy(patient, substance);
             allergy.setSeverity(randomSeverity(r));
             allergy.setReaction(reactions[r.nextInt(reactions.length)]);
-            // createdByUser intentionally left null for family member allergies; for user patients, set later if needed
+            // createdByUser intentionally left null for family member allergies; for user
+            // patients, set later if needed
             patientAllergyRepository.save(allergy);
             created.add(substance);
         }
@@ -1109,7 +1159,8 @@ public class DevProfessionalSeedController {
     }
 
     private int seedChronicConditions(Random r, Patient patient, User createdBy) {
-        String[] conditions = new String[]{"Type 2 Diabetes", "Hypertension", "Asthma", "Hypothyroidism", "Migraine"};
+        String[] conditions = new String[] { "Type 2 Diabetes", "Hypertension", "Asthma", "Hypothyroidism",
+                "Migraine" };
         int count = 1 + r.nextInt(2);
         int created = 0;
         for (int i = 0; i < count; i++) {
@@ -1160,7 +1211,7 @@ public class DevProfessionalSeedController {
             return;
         }
         if (u.getGender() == null || u.getGender().isBlank()) {
-            u.setGender(pick(r, new String[]{"M", "F"}));
+            u.setGender(pick(r, new String[] { "M", "F" }));
         }
 
         final String gender = u.getGender() == null ? "" : u.getGender().trim().toUpperCase(Locale.ROOT);
@@ -1225,6 +1276,7 @@ public class DevProfessionalSeedController {
     }
 
     private int lastCreatedReminderTimes = 0;
+
     private int deepFillMedsAndRemindersFromPrescription(Random r, Prescription p, User createdBy, Instant issuedAt) {
         lastCreatedReminderTimes = 0;
         if (p == null || p.getPatient() == null || p.getPatient().getId() == null || p.getId() == null) {
@@ -1233,7 +1285,8 @@ public class DevProfessionalSeedController {
 
         // Ensure patient allergies have createdByUser for USER patients
         Patient patient = p.getPatient();
-        for (PatientAllergy allergy : patientAllergyRepository.findAllByPatientIdOrderByRecordedAtDesc(patient.getId())) {
+        for (PatientAllergy allergy : patientAllergyRepository
+                .findAllByPatientIdOrderByRecordedAtDesc(patient.getId())) {
             if (allergy.getCreatedByUser() == null && r.nextInt(100) < 70) {
                 allergy.setCreatedByUser(createdBy);
                 patientAllergyRepository.save(allergy);
@@ -1241,15 +1294,17 @@ public class DevProfessionalSeedController {
         }
 
         int reminders = 0;
-        LocalDate startDate = issuedAt == null ? LocalDate.now() : LocalDate.ofInstant(issuedAt, java.time.ZoneOffset.UTC);
+        LocalDate startDate = issuedAt == null ? LocalDate.now()
+                : LocalDate.ofInstant(issuedAt, java.time.ZoneOffset.UTC);
 
-        List<PatientMedication> meds = patientMedicationRepository.findAllByPatientIdAndSourcePrescriptionId(patient.getId(), p.getId());
+        List<PatientMedication> meds = patientMedicationRepository
+                .findAllByPatientIdAndSourcePrescriptionId(patient.getId(), p.getId());
         for (PatientMedication pm : meds) {
             if (pm.getStartDate() == null) {
                 pm.setStartDate(startDate);
             }
             if (pm.getFrequency() == null || pm.getFrequency().isBlank()) {
-                pm.setFrequency(pick(r, new String[]{"Daily", "Every 12 hours", "Every 8 hours"}));
+                pm.setFrequency(pick(r, new String[] { "Daily", "Every 12 hours", "Every 8 hours" }));
             }
             if (pm.getTimesPerDay() == null) {
                 pm.setTimesPerDay(1 + r.nextInt(3));
@@ -1271,7 +1326,8 @@ public class DevProfessionalSeedController {
             rem.setPatientMedication(pm);
             rem.setCreatedByUser(createdBy);
             rem.setStartDate(pm.getStartDate());
-            rem.setEndDate(pm.getStartDate() == null ? null : pm.getStartDate().plusDays(pm.getDurationDays() == null ? 7 : pm.getDurationDays()));
+            rem.setEndDate(pm.getStartDate() == null ? null
+                    : pm.getStartDate().plusDays(pm.getDurationDays() == null ? 7 : pm.getDurationDays()));
             rem.setDescription("Seeded medication reminder");
             patientReminderRepository.save(rem);
             reminders++;
@@ -1290,7 +1346,8 @@ public class DevProfessionalSeedController {
         return reminders;
     }
 
-    private int seedMedicalActs(Random r, Prescription p, Provider nurseProvider, Provider kineProvider, Instant performedAt) {
+    private int seedMedicalActs(Random r, Prescription p, Provider nurseProvider, Provider kineProvider,
+            Instant performedAt) {
         if (p == null || p.getId() == null) {
             return 0;
         }
@@ -1314,16 +1371,20 @@ public class DevProfessionalSeedController {
 
     private static PatientAllergySeverity randomSeverity(Random r) {
         int v = r.nextInt(100);
-        if (v < 15) return PatientAllergySeverity.LOW;
-        if (v < 55) return PatientAllergySeverity.MEDIUM;
-        if (v < 90) return PatientAllergySeverity.HIGH;
+        if (v < 15)
+            return PatientAllergySeverity.LOW;
+        if (v < 55)
+            return PatientAllergySeverity.MEDIUM;
+        if (v < 90)
+            return PatientAllergySeverity.HIGH;
         return PatientAllergySeverity.UNKNOWN;
     }
 
     private User ensureFakeDoctorUser(String password) {
         EnsureFakeDoctorResponse fake = ensureFakeDoctor();
         return userRepository.findByEmail(fake.email())
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Fake doctor user not found"));
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
+                        "Fake doctor user not found"));
     }
 
     private User ensurePatientUser(String email, String name, String password) {

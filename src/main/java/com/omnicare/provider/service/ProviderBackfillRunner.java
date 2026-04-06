@@ -2,6 +2,7 @@ package com.omnicare.provider.service;
 
 import com.omnicare.doctor.model.Consultation;
 import com.omnicare.doctor.repository.ConsultationRepository;
+import jakarta.persistence.EntityNotFoundException;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.stereotype.Component;
@@ -30,11 +31,15 @@ public class ProviderBackfillRunner implements ApplicationRunner {
             if (c.getProvider() != null) {
                 continue;
             }
-            if (c.getDoctor() == null || c.getDoctor().getProvider() == null) {
+            try {
+                if (c.getDoctor() == null || c.getDoctor().getProvider() == null) {
+                    continue;
+                }
+                c.setProvider(c.getDoctor().getProvider());
+                dirty = true;
+            } catch (EntityNotFoundException ex) {
                 continue;
             }
-            c.setProvider(c.getDoctor().getProvider());
-            dirty = true;
         }
 
         if (dirty) {

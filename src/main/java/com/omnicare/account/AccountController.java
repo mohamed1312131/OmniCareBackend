@@ -16,6 +16,7 @@ import com.omnicare.patient.model.PatientMedication;
 import com.omnicare.patient.repository.PatientChronicConditionRepository;
 import com.omnicare.patient.repository.PatientMedicationRepository;
 import com.omnicare.patient.service.PatientService;
+import com.omnicare.profile.model.RegistrationStatus;
 import com.omnicare.profile.model.User;
 import com.omnicare.profile.model.UserRole;
 import com.omnicare.profile.repository.UserRepository;
@@ -45,7 +46,7 @@ import java.util.Objects;
 import java.util.UUID;
 
 @RestController
-@RequestMapping({"/api/account", "/v1/account"})
+@RequestMapping({ "/api/account", "/v1/account" })
 public class AccountController {
 
     private final UserRepository userRepository;
@@ -69,8 +70,7 @@ public class AccountController {
             PatientService patientService,
             PatientChronicConditionRepository patientChronicConditionRepository,
             PatientMedicationRepository patientMedicationRepository,
-            ProviderService providerService
-    ) {
+            ProviderService providerService) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.medicalInfoValidator = medicalInfoValidator;
@@ -104,6 +104,9 @@ public class AccountController {
             String firstName,
             String lastName,
             String phoneNumber,
+            boolean emailVerified,
+            boolean phoneVerified,
+            RegistrationStatus registrationStatus,
             LocalDate dateOfBirth,
             String gender,
             UserProfileResponse profile,
@@ -111,20 +114,20 @@ public class AccountController {
             UUID providerId,
             String providerType,
             BloodGroup bloodGroup,
-            Map<String, Object> medicalInfo
-    ) {
+            Map<String, Object> medicalInfo) {
         public static MedicalPassportResponse from(
                 User user,
                 PatientService patientService,
                 PatientChronicConditionRepository patientChronicConditionRepository,
                 PatientMedicationRepository patientMedicationRepository,
-                ProviderService providerService
-        ) {
-            UserProfileResponse profile = new UserProfileResponse(user.getFirstName(), user.getLastName(), user.getProfilePictureUrl());
+                ProviderService providerService) {
+            UserProfileResponse profile = new UserProfileResponse(user.getFirstName(), user.getLastName(),
+                    user.getProfilePictureUrl());
 
             UUID providerId = null;
             String providerType = null;
-            if (ProviderService.isProfessionalRole(user.getRole()) && user.getRole() != UserRole.ADMIN && providerService != null) {
+            if (ProviderService.isProfessionalRole(user.getRole()) && user.getRole() != UserRole.ADMIN
+                    && providerService != null) {
                 Provider provider = providerService.ensureForProfessionalUser(user);
                 providerId = provider.getId();
                 providerType = provider.getType() == null ? null : provider.getType().name();
@@ -134,8 +137,7 @@ public class AccountController {
                     user,
                     patientService,
                     patientChronicConditionRepository,
-                    patientMedicationRepository
-            );
+                    patientMedicationRepository);
 
             return new MedicalPassportResponse(
                     user.getEmail(),
@@ -143,6 +145,9 @@ public class AccountController {
                     user.getFirstName(),
                     user.getLastName(),
                     user.getPhoneNumber(),
+                    user.isEmailVerified(),
+                    user.isPhoneVerified(),
+                    user.getRegistrationStatus(),
                     user.getDateOfBirth(),
                     user.getGender(),
                     profile,
@@ -150,12 +155,12 @@ public class AccountController {
                     providerId,
                     providerType,
                     user.getBloodGroup(),
-                    mergedMedicalInfo
-            );
+                    mergedMedicalInfo);
         }
     }
 
-    public record FamilyMemberProfile(UUID id, String fullName, String relationship, LocalDate birthDate, Integer ageYears, String gender, BloodGroup bloodGroup, Map<String, Object> medicalInfo) {
+    public record FamilyMemberProfile(UUID id, String fullName, String relationship, LocalDate birthDate,
+            Integer ageYears, String gender, BloodGroup bloodGroup, Map<String, Object> medicalInfo) {
         public static FamilyMemberProfile from(FamilyMember member) {
             Integer age = null;
             if (member.getBirthDate() != null) {
@@ -169,8 +174,7 @@ public class AccountController {
                     age,
                     member.getGender(),
                     member.getBloodGroup(),
-                    member.getMedicalInfo()
-            );
+                    member.getMedicalInfo());
         }
     }
 
@@ -181,8 +185,7 @@ public class AccountController {
             LocalDate issueDate,
             String fileUrl,
             String filePublicId,
-            String fileProvider
-    ) {
+            String fileProvider) {
         public static MedicalDocumentResponse from(MedicalDocument doc) {
             return new MedicalDocumentResponse(
                     doc.getId(),
@@ -191,12 +194,12 @@ public class AccountController {
                     doc.getIssueDate(),
                     doc.getFileUrl(),
                     doc.getFilePublicId(),
-                    doc.getFileProvider()
-            );
+                    doc.getFileProvider());
         }
     }
 
-    public record FullProfileResponse(MedicalPassportResponse user, List<FamilyMemberProfile> familyMembers, List<MedicalDocumentResponse> documents) {
+    public record FullProfileResponse(MedicalPassportResponse user, List<FamilyMemberProfile> familyMembers,
+            List<MedicalDocumentResponse> documents) {
     }
 
     @GetMapping("/me")
@@ -209,7 +212,8 @@ public class AccountController {
 
     @PatchMapping("/medical-passport")
     @Transactional
-    public MedicalPassportResponse patchMedicalPassport(Authentication authentication, @RequestBody UpdateMedicalPassportRequest request) {
+    public MedicalPassportResponse patchMedicalPassport(Authentication authentication,
+            @RequestBody UpdateMedicalPassportRequest request) {
         User user = requireUser(authentication);
 
         final Patient patient = patientService.ensureForUser(user);
@@ -232,16 +236,14 @@ public class AccountController {
                 patientService,
                 patientChronicConditionRepository,
                 patientMedicationRepository,
-                providerService
-        );
+                providerService);
     }
 
     @PatchMapping("/profile-picture")
     @Transactional
     public ApiResponse<MedicalPassportResponse> patchProfilePicture(
             Authentication authentication,
-            @RequestBody UpdateProfilePictureRequest request
-    ) {
+            @RequestBody UpdateProfilePictureRequest request) {
         User user = requireUser(authentication);
 
         if (request == null) {
@@ -271,9 +273,7 @@ public class AccountController {
                         patientService,
                         patientChronicConditionRepository,
                         patientMedicationRepository,
-                        providerService
-                )
-        );
+                        providerService));
     }
 
     private static Map<String, Object> sanitizeMedicalInfo(Map<String, Object> medicalInfo) {
@@ -295,7 +295,8 @@ public class AccountController {
                 .map(FamilyMemberProfile::from)
                 .toList();
 
-        List<MedicalDocumentResponse> documents = medicalDocumentRepository.findAllByOwnerUserIdOrderByCreatedAtDesc(user.getId()).stream()
+        List<MedicalDocumentResponse> documents = medicalDocumentRepository
+                .findAllByOwnerUserIdOrderByCreatedAtDesc(user.getId()).stream()
                 .map(MedicalDocumentResponse::from)
                 .toList();
 
@@ -306,12 +307,9 @@ public class AccountController {
                                 patientService,
                                 patientChronicConditionRepository,
                                 patientMedicationRepository,
-                                providerService
-                        ),
+                                providerService),
                         family,
-                        documents
-                )
-        );
+                        documents));
     }
 
     @PostMapping("/password")
@@ -357,8 +355,7 @@ public class AccountController {
             User user,
             PatientService patientService,
             PatientChronicConditionRepository patientChronicConditionRepository,
-            PatientMedicationRepository patientMedicationRepository
-    ) {
+            PatientMedicationRepository patientMedicationRepository) {
         Map<String, Object> base = user == null || user.getMedicalInfo() == null
                 ? new HashMap<>()
                 : new HashMap<>(user.getMedicalInfo());
@@ -425,7 +422,8 @@ public class AccountController {
         List<PatientChronicCondition> existingChronic = patientChronicConditionRepository
                 .findAllByPatientIdOrderByRecordedAtDesc(patient.getId());
         List<PatientChronicCondition> toDeleteChronic = existingChronic.stream()
-                .filter(r -> r.getName() != null && desiredChronic.stream().noneMatch(d -> d.equalsIgnoreCase(r.getName())))
+                .filter(r -> r.getName() != null
+                        && desiredChronic.stream().noneMatch(d -> d.equalsIgnoreCase(r.getName())))
                 .toList();
         if (!toDeleteChronic.isEmpty()) {
             patientChronicConditionRepository.deleteAll(toDeleteChronic);
@@ -443,20 +441,22 @@ public class AccountController {
         Object medsRaw = medicalInfo.get("currentMedications");
         List<Map<String, Object>> meds = (medsRaw instanceof List<?> raw)
                 ? raw.stream()
-                .filter(e -> e instanceof Map<?, ?>)
-                .map(e -> {
-                    Map<?, ?> m = (Map<?, ?>) e;
-                    Map<String, Object> out = new HashMap<>();
-                    for (Map.Entry<?, ?> entry : m.entrySet()) {
-                        if (entry.getKey() == null) continue;
-                        out.put(entry.getKey().toString(), entry.getValue());
-                    }
-                    return out;
-                })
-                .toList()
+                        .filter(e -> e instanceof Map<?, ?>)
+                        .map(e -> {
+                            Map<?, ?> m = (Map<?, ?>) e;
+                            Map<String, Object> out = new HashMap<>();
+                            for (Map.Entry<?, ?> entry : m.entrySet()) {
+                                if (entry.getKey() == null)
+                                    continue;
+                                out.put(entry.getKey().toString(), entry.getValue());
+                            }
+                            return out;
+                        })
+                        .toList()
                 : List.of();
 
-        List<PatientMedication> existingMeds = patientMedicationRepository.findAllByPatientIdOrderByRecordedAtDesc(patient.getId());
+        List<PatientMedication> existingMeds = patientMedicationRepository
+                .findAllByPatientIdOrderByRecordedAtDesc(patient.getId());
         List<String> desiredMedicationIds = meds.stream()
                 .map(m -> m.get("medicationId"))
                 .filter(Objects::nonNull)
@@ -468,7 +468,8 @@ public class AccountController {
 
         List<PatientMedication> toDeleteMeds = existingMeds.stream()
                 .filter(pm -> pm.getMedication() != null && pm.getMedication().getId() != null)
-                .filter(pm -> desiredMedicationIds.stream().noneMatch(id -> id.equalsIgnoreCase(pm.getMedication().getId().toString())))
+                .filter(pm -> desiredMedicationIds.stream()
+                        .noneMatch(id -> id.equalsIgnoreCase(pm.getMedication().getId().toString())))
                 .toList();
         if (!toDeleteMeds.isEmpty()) {
             patientMedicationRepository.deleteAll(toDeleteMeds);

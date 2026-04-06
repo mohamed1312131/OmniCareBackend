@@ -33,7 +33,7 @@ import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
 
 @RestController
-@RequestMapping({"/api/auth", "/v1/auth"})
+@RequestMapping({ "/api/auth", "/v1/auth" })
 public class AuthController {
 
     private final TokenRevocationService tokenRevocationService;
@@ -53,8 +53,7 @@ public class AuthController {
             JwtService jwtService,
             EmailVerificationService emailVerificationService,
             PatientService patientService,
-            GoogleAuthService googleAuthService
-    ) {
+            GoogleAuthService googleAuthService) {
         this.tokenRevocationService = tokenRevocationService;
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
@@ -77,7 +76,8 @@ public class AuthController {
     public record GoogleLoginRequest(String idToken, String language) {
     }
 
-    public record GoogleLoginResponseData(boolean isNewUser, String accessToken, String refreshToken, long expiresIn, UserResponse user) {
+    public record GoogleLoginResponseData(boolean isNewUser, String accessToken, String refreshToken, long expiresIn,
+            UserResponse user) {
     }
 
     public record UserProfileResponse(String firstName, String lastName, String avatar) {
@@ -89,10 +89,10 @@ public class AuthController {
             String phoneNumber,
             boolean emailVerified,
             boolean phoneVerified,
+            RegistrationStatus registrationStatus,
             String language,
             boolean onboardingComplete,
-            UserProfileResponse profile
-    ) {
+            UserProfileResponse profile) {
     }
 
     public record RegisterResponse(String message) {
@@ -105,8 +105,7 @@ public class AuthController {
             String lastName,
             String gender,
             String dateOfBirth,
-            String password
-    ) {
+            String password) {
     }
 
     public record VerifyEmailOtpRequest(String email, String code) {
@@ -117,15 +116,15 @@ public class AuthController {
 
     @PostMapping("/login")
     public ApiResponse<LoginResponseData> login(@RequestBody LoginRequest request) {
-        if (request == null || request.email() == null || request.email().isBlank() || request.password() == null || request.password().isBlank()) {
+        if (request == null || request.email() == null || request.email().isBlank() || request.password() == null
+                || request.password().isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "email and password are required");
         }
 
         String email = request.email().trim();
         try {
             authenticationManager.authenticate(
-                    new UsernamePasswordAuthenticationToken(email, request.password())
-            );
+                    new UsernamePasswordAuthenticationToken(email, request.password()));
         } catch (BadCredentialsException ex) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid credentials");
         }
@@ -167,11 +166,13 @@ public class AuthController {
         String lastName = (String) payload.get("family_name");
         if (firstName != null) {
             firstName = firstName.trim();
-            if (firstName.isEmpty()) firstName = null;
+            if (firstName.isEmpty())
+                firstName = null;
         }
         if (lastName != null) {
             lastName = lastName.trim();
-            if (lastName.isEmpty()) lastName = null;
+            if (lastName.isEmpty())
+                lastName = null;
         }
 
         String name = (String) payload.get("name");
@@ -231,16 +232,17 @@ public class AuthController {
                 user.getPhoneNumber(),
                 user.isEmailVerified(),
                 user.isPhoneVerified(),
+                user.getRegistrationStatus(),
                 (language == null || language.isBlank()) ? "en" : language,
                 onboardingComplete,
-                profile
-        );
+                profile);
     }
 
     @PostMapping("/register")
     @Transactional
     public RegisterResponse register(@RequestBody RegisterRequest request) {
-        if (request == null || request.email() == null || request.email().isBlank() || request.password() == null || request.password().isBlank()) {
+        if (request == null || request.email() == null || request.email().isBlank() || request.password() == null
+                || request.password().isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "email and password are required");
         }
 
@@ -261,8 +263,10 @@ public class AuthController {
         }
 
         String resolvedName;
-        if ((resolvedFirstName != null && !resolvedFirstName.isBlank()) || (resolvedLastName != null && !resolvedLastName.isBlank())) {
-            resolvedName = ((resolvedFirstName == null) ? "" : resolvedFirstName) + ((resolvedLastName == null) ? "" : (" " + resolvedLastName));
+        if ((resolvedFirstName != null && !resolvedFirstName.isBlank())
+                || (resolvedLastName != null && !resolvedLastName.isBlank())) {
+            resolvedName = ((resolvedFirstName == null) ? "" : resolvedFirstName)
+                    + ((resolvedLastName == null) ? "" : (" " + resolvedLastName));
             resolvedName = resolvedName.trim();
         } else {
             String rawName = request.name();
@@ -322,7 +326,8 @@ public class AuthController {
     @PostMapping("/set-phone")
     @Transactional
     public RegisterResponse setPhone(@RequestBody SetPhoneRequest request) {
-        if (request == null || request.email() == null || request.email().isBlank() || request.phoneNumber() == null || request.phoneNumber().isBlank()) {
+        if (request == null || request.email() == null || request.email().isBlank() || request.phoneNumber() == null
+                || request.phoneNumber().isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "email and phoneNumber are required");
         }
 
@@ -353,8 +358,7 @@ public class AuthController {
     @GetMapping("/verify-email")
     public Object verifyEmail(
             @RequestParam("token") String token,
-            @RequestParam(value = "redirect", required = false) String redirect
-    ) {
+            @RequestParam(value = "redirect", required = false) String redirect) {
         throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Use /api/auth/verify-email-otp");
     }
 

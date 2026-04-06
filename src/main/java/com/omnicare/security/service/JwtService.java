@@ -36,7 +36,9 @@ public class JwtService {
         String email = user.getEmail();
         String name = user.getName();
         String role = user.getRole() == null ? "PATIENT" : user.getRole().name();
-        String registrationStatus = user.getRegistrationStatus() == null ? "PENDING_PASSWORD" : user.getRegistrationStatus().name();
+        String registrationStatus = user.getRegistrationStatus() == null ? "PENDING_PASSWORD"
+                : user.getRegistrationStatus().name();
+        boolean phoneVerified = user.isPhoneVerified();
 
         JwtClaimsSet claims = JwtClaimsSet.builder()
                 .issuer("omnicare")
@@ -48,6 +50,7 @@ public class JwtService {
                 .claim("name", name)
                 .claim("roles", List.of(role))
                 .claim("registrationStatus", registrationStatus)
+                .claim("phoneVerified", phoneVerified)
                 .build();
 
         JwsHeader header = JwsHeader.with(MacAlgorithm.HS256).build();

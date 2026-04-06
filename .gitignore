@@ -46,3 +46,5 @@ OmnicareBackend.code-workspace
 *.code-workspace
 
 commands.txt
+.env
+OmniCareBackend\.env
