@@ -485,6 +485,11 @@ public class ConsultationController {
             // patient actor chooses a provider (preferred) or a doctor (legacy)
             if (request.providerId() != null) {
                 provider = providerService.requireById(request.providerId());
+                if (provider.getType() == ProviderType.DOCTOR || provider.getType() == ProviderType.PSYCHIATRIST) {
+                    doctor = doctorRepository.findByProviderId(provider.getId())
+                            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                                    "Doctor profile not found for provider"));
+                }
             } else if (request.doctorId() != null) {
                 Doctor chosen = doctorRepository.findById(request.doctorId())
                         .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Doctor not found"));

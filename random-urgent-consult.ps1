@@ -19,15 +19,43 @@ function Get-DevJson($path) {
   return Invoke-RestMethod -Method Get -Uri ("$BaseUrl" + $path) -Headers @{ Accept = "application/json" }
 }
 
+function Try-GetDevJson($path) {
+  try {
+    return Get-DevJson $path
+  }
+  catch {
+    $response = $_.Exception.Response
+    if ($response -and [int]$response.StatusCode -eq 404) {
+      return $null
+    }
+    throw
+  }
+}
+
 $r = [System.Random]::new()
 
 if (-not $DoctorEmail -or $DoctorEmail.Trim().Length -eq 0) {
-  $active = Get-DevJson "/api/auth/dev/active-doctor"
+  $active = Try-GetDevJson "/api/auth/dev/active-doctor"
   if ($active -and $active.email) { $DoctorEmail = $active.email }
   elseif ($active -and $active.data -and $active.data.email) { $DoctorEmail = $active.data.email }
   if (-not $DoctorPassword -or $DoctorPassword.Trim().Length -eq 0) {
     if ($active -and $active.password) { $DoctorPassword = $active.password }
     elseif ($active -and $active.data -and $active.data.password) { $DoctorPassword = $active.data.password }
+  }
+
+  if (-not $DoctorEmail -or $DoctorEmail.Trim().Length -eq 0) {
+    $accounts = Get-DevJson "/api/auth/dev/accounts"
+    $list = @()
+    if ($accounts -is [System.Collections.IEnumerable] -and -not ($accounts -is [string])) {
+      $list = @($accounts)
+    }
+    elseif ($accounts -and $accounts.data) {
+      $list = @($accounts.data)
+    }
+
+    $doctors = @($list | Where-Object { $_ -and $_.role -and $_.email -and ($_.role.ToString().ToUpperInvariant() -eq "DOCTOR") })
+    if ($doctors.Count -eq 0) { throw "No DOCTOR accounts found at /api/auth/dev/accounts" }
+    $DoctorEmail = $doctors[$r.Next(0, $doctors.Count)].email
   }
 }
 
@@ -38,7 +66,8 @@ if (-not $PatientEmail -or $PatientEmail.Trim().Length -eq 0) {
   $list = @()
   if ($accounts -is [System.Collections.IEnumerable] -and -not ($accounts -is [string])) {
     $list = @($accounts)
-  } elseif ($accounts -and $accounts.data) {
+  }
+  elseif ($accounts -and $accounts.data) {
     $list = @($accounts.data)
   }
 
@@ -78,9 +107,11 @@ $patientsResp = Invoke-RestMethod -Method Get -Uri "$BaseUrl/api/patients" -Head
 $patients = $null
 if ($patientsResp -is [System.Collections.IEnumerable] -and -not ($patientsResp -is [string])) {
   $patients = @($patientsResp)
-} elseif ($patientsResp -and $patientsResp.data) {
+}
+elseif ($patientsResp -and $patientsResp.data) {
   $patients = @($patientsResp.data)
-} else {
+}
+else {
   $patients = @()
 }
 
@@ -89,7 +120,8 @@ if (-not $patients -or $patients.Count -eq 0) { throw "No patients returned from
 $selfPatients = @($patients | Where-Object { $_ -and $_.relationship -and ($_.relationship.ToString().ToUpperInvariant() -eq "SELF") })
 if ($selfPatients.Count -gt 0) {
   $patientRow = $selfPatients[$r.Next(0, $selfPatients.Count)]
-} else {
+}
+else {
   $patientRow = $patients[$r.Next(0, $patients.Count)]
 }
 
@@ -180,15 +212,15 @@ for ($i = 0; $i -lt $areasCount; $i++) {
 }
 
 $consultBodyObj = @{
-  symptoms = $symptoms
-  providerId = $providerId
-  patientId = $patientId
-  latitude = 36.8065
-  longitude = 10.1815
-  city = "Tunis"
+  symptoms      = $symptoms
+  providerId    = $providerId
+  patientId     = $patientId
+  latitude      = 36.8065
+  longitude     = 10.1815
+  city          = "Tunis"
   streetAddress = "Avenue Habib Bourguiba"
-  painLevel = $painLevel
-  locationType = "HOME"
+  painLevel     = $painLevel
+  locationType  = "HOME"
 }
 if ($affectedAreas.Count -gt 0) {
   $consultBodyObj.affectedAreas = $affectedAreas

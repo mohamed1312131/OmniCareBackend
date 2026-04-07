@@ -3,12 +3,15 @@ package com.omnicare.reservation.service;
 import com.omnicare.access.service.PatientAccessService;
 import com.omnicare.doctor.model.Consultation;
 import com.omnicare.doctor.model.ConsultationStatus;
+import com.omnicare.doctor.model.Doctor;
+import com.omnicare.doctor.repository.DoctorRepository;
 import com.omnicare.doctor.repository.ConsultationRepository;
 import com.omnicare.doctor.service.ConsultationFinancialService;
 import com.omnicare.doctor.service.ConsultationRealtimeNotificationService;
 import com.omnicare.patient.model.Patient;
 import com.omnicare.patient.repository.PatientRepository;
 import com.omnicare.provider.model.Provider;
+import com.omnicare.provider.model.ProviderType;
 import com.omnicare.provider.service.ProviderService;
 import com.omnicare.reservation.model.AvailabilityIntent;
 import com.omnicare.reservation.model.ProposedSlot;
@@ -44,6 +47,7 @@ public class ReservationService {
     private final ProposedSlotRepository proposedSlotRepository;
     private final PatientRepository patientRepository;
     private final ProviderService providerService;
+    private final DoctorRepository doctorRepository;
     private final ConsultationRepository consultationRepository;
     private final ConsultationFinancialService consultationFinancialService;
     private final PatientAccessService patientAccessService;
@@ -55,6 +59,7 @@ public class ReservationService {
             ProposedSlotRepository proposedSlotRepository,
             PatientRepository patientRepository,
             ProviderService providerService,
+            DoctorRepository doctorRepository,
             ConsultationRepository consultationRepository,
             ConsultationFinancialService consultationFinancialService,
             PatientAccessService patientAccessService,
@@ -64,6 +69,7 @@ public class ReservationService {
         this.proposedSlotRepository = proposedSlotRepository;
         this.patientRepository = patientRepository;
         this.providerService = providerService;
+        this.doctorRepository = doctorRepository;
         this.consultationRepository = consultationRepository;
         this.consultationFinancialService = consultationFinancialService;
         this.patientAccessService = patientAccessService;
@@ -287,6 +293,14 @@ public class ReservationService {
         patientAccessService.grantAccessFromPatientToProvider(actor, patient.getId(), rr.getProvider().getId());
 
         Consultation c = new Consultation();
+        Provider provider = rr.getProvider();
+        if (provider != null
+                && (provider.getType() == ProviderType.DOCTOR || provider.getType() == ProviderType.PSYCHIATRIST)) {
+            Doctor doctor = doctorRepository.findByProviderId(provider.getId())
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                            "Doctor profile not found for provider"));
+            c.setDoctor(doctor);
+        }
         c.setProvider(rr.getProvider());
         c.setPatient(patient);
         c.setStatus(ConsultationStatus.PENDING);
