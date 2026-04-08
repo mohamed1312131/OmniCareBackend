@@ -49,18 +49,18 @@ public class ReservationController {
             java.time.DayOfWeek dayOfWeek,
             LocalDate specificDate,
             com.omnicare.reservation.model.TimeWindow timeWindow,
-            LocalTime exactTime
-    ) {
+            LocalTime exactTime) {
     }
 
     public record CreateReservationRequest(
             UUID patientId,
             UUID providerId,
+            String visitType,
+            Boolean isEmergency,
             LocalDate searchStartDate,
             LocalDate searchEndDate,
             String reason,
-            List<AvailabilityIntentRequest> intents
-    ) {
+            List<AvailabilityIntentRequest> intents) {
     }
 
     public record ProposeSlotsBody(List<LocalDateTime> slots) {
@@ -75,9 +75,11 @@ public class ReservationController {
         }
     }
 
-    public record AvailabilityIntentResponse(UUID id, java.time.DayOfWeek dayOfWeek, LocalDate specificDate, com.omnicare.reservation.model.TimeWindow timeWindow, LocalTime exactTime) {
+    public record AvailabilityIntentResponse(UUID id, java.time.DayOfWeek dayOfWeek, LocalDate specificDate,
+            com.omnicare.reservation.model.TimeWindow timeWindow, LocalTime exactTime) {
         static AvailabilityIntentResponse from(AvailabilityIntent i) {
-            return new AvailabilityIntentResponse(i.getId(), i.getDayOfWeek(), i.getSpecificDate(), i.getTimeWindow(), i.getExactTime());
+            return new AvailabilityIntentResponse(i.getId(), i.getDayOfWeek(), i.getSpecificDate(), i.getTimeWindow(),
+                    i.getExactTime());
         }
     }
 
@@ -94,13 +96,15 @@ public class ReservationController {
             Instant createdAt,
             Instant updatedAt,
             List<AvailabilityIntentResponse> intents,
-            List<ProposedSlotResponse> slots
-    ) {
-        static ReservationResponse from(ReservationRequest r, List<AvailabilityIntent> intents, List<ProposedSlot> slots) {
+            List<ProposedSlotResponse> slots) {
+        static ReservationResponse from(ReservationRequest r, List<AvailabilityIntent> intents,
+                List<ProposedSlot> slots) {
             UUID patientId = r.getPatient() == null ? null : r.getPatient().getId();
             UUID providerId = r.getProvider() == null ? null : r.getProvider().getId();
-            List<AvailabilityIntentResponse> i = intents == null ? List.of() : intents.stream().map(AvailabilityIntentResponse::from).toList();
-            List<ProposedSlotResponse> s = slots == null ? List.of() : slots.stream().map(ProposedSlotResponse::from).toList();
+            List<AvailabilityIntentResponse> i = intents == null ? List.of()
+                    : intents.stream().map(AvailabilityIntentResponse::from).toList();
+            List<ProposedSlotResponse> s = slots == null ? List.of()
+                    : slots.stream().map(ProposedSlotResponse::from).toList();
             return new ReservationResponse(
                     r.getId(),
                     r.getStatus(),
@@ -114,8 +118,7 @@ public class ReservationController {
                     r.getCreatedAt(),
                     r.getUpdatedAt(),
                     i,
-                    s
-            );
+                    s);
         }
     }
 
@@ -136,45 +139,54 @@ public class ReservationController {
                     i == null ? null : i.dayOfWeek(),
                     i == null ? null : i.specificDate(),
                     i == null ? null : i.timeWindow(),
-                    i == null ? null : i.exactTime()
-            )).toList();
+                    i == null ? null : i.exactTime())).toList();
         }
 
         ReservationRequest created = reservationService.create(actor, new CreateRequest(
                 request.patientId(),
                 request.providerId(),
+                request.visitType(),
+                request.isEmergency(),
                 request.searchStartDate(),
                 request.searchEndDate(),
                 request.reason(),
-                intents
-        ));
+                intents));
 
-        return ReservationResponse.from(created, reservationService.listIntents(created.getId()), reservationService.listSlots(created.getId()));
+        return ReservationResponse.from(created, reservationService.listIntents(created.getId()),
+                reservationService.listSlots(created.getId()));
     }
 
     @GetMapping("/requests")
     @Transactional(readOnly = true)
-    public List<ReservationResponse> list(Authentication authentication, @RequestParam(value = "status", required = false) ReservationRequestStatus status) {
+    public List<ReservationResponse> list(Authentication authentication,
+            @RequestParam(value = "status", required = false) ReservationRequestStatus status) {
         User actor = requireUser(authentication);
         List<ReservationRequest> list = reservationService.listForActor(actor, status);
-        return list.stream().map(r -> ReservationResponse.from(r, reservationService.listIntents(r.getId()), reservationService.listSlots(r.getId()))).toList();
+        return list.stream().map(r -> ReservationResponse.from(r, reservationService.listIntents(r.getId()),
+                reservationService.listSlots(r.getId()))).toList();
     }
 
     @PostMapping("/requests/{requestId}/propose")
     @Transactional
-    public ReservationResponse propose(Authentication authentication, @PathVariable UUID requestId, @RequestBody ProposeSlotsBody body) {
+    public ReservationResponse propose(Authentication authentication, @PathVariable UUID requestId,
+            @RequestBody ProposeSlotsBody body) {
         User actor = requireUser(authentication);
-        ReservationRequest rr = reservationService.proposeSlots(actor, requestId, new ProposeSlotsRequest(body == null ? null : body.slots()));
-        return ReservationResponse.from(rr, reservationService.listIntents(rr.getId()), reservationService.listSlots(rr.getId()));
+        ReservationRequest rr = reservationService.proposeSlots(actor, requestId,
+                new ProposeSlotsRequest(body == null ? null : body.slots()));
+        return ReservationResponse.from(rr, reservationService.listIntents(rr.getId()),
+                reservationService.listSlots(rr.getId()));
     }
 
     @PostMapping("/requests/{requestId}/accept")
     @Transactional
-    public AcceptResponse accept(Authentication authentication, @PathVariable UUID requestId, @RequestBody AcceptBody body) {
+    public AcceptResponse accept(Authentication authentication, @PathVariable UUID requestId,
+            @RequestBody AcceptBody body) {
         User actor = requireUser(authentication);
-        AcceptanceResult result = reservationService.acceptSlot(actor, requestId, new AcceptSlotRequest(body == null ? null : body.slotId()));
+        AcceptanceResult result = reservationService.acceptSlot(actor, requestId,
+                new AcceptSlotRequest(body == null ? null : body.slotId()));
         ReservationRequest rr = result.request();
-        ReservationResponse response = ReservationResponse.from(rr, reservationService.listIntents(rr.getId()), reservationService.listSlots(rr.getId()));
+        ReservationResponse response = ReservationResponse.from(rr, reservationService.listIntents(rr.getId()),
+                reservationService.listSlots(rr.getId()));
         UUID consultationId = result.consultation() == null ? null : result.consultation().getId();
         return new AcceptResponse(response, consultationId);
     }
@@ -184,7 +196,8 @@ public class ReservationController {
     public ReservationResponse cancel(Authentication authentication, @PathVariable UUID requestId) {
         User actor = requireUser(authentication);
         ReservationRequest rr = reservationService.cancelAsPatient(actor, requestId);
-        return ReservationResponse.from(rr, reservationService.listIntents(rr.getId()), reservationService.listSlots(rr.getId()));
+        return ReservationResponse.from(rr, reservationService.listIntents(rr.getId()),
+                reservationService.listSlots(rr.getId()));
     }
 
     private User requireUser(Authentication authentication) {

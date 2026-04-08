@@ -38,6 +38,7 @@ public class DoctorSearchController {
 
     public record DoctorSearchResult(
             UUID doctorId,
+            UUID providerId,
             UUID userId,
             String name,
             String specialty,
@@ -47,10 +48,11 @@ public class DoctorSearchController {
             boolean isOnline) {
         static DoctorSearchResult from(Doctor d) {
             if (d == null || d.getProvider() == null || d.getProvider().getUser() == null) {
-                return new DoctorSearchResult(null, null, null, null, null, null, null, false);
+                return new DoctorSearchResult(null, null, null, null, null, null, null, null, false);
             }
             return new DoctorSearchResult(
                     d.getId(),
+                    d.getProvider().getId(),
                     d.getProvider().getUser().getId(),
                     d.getProvider().getUser().getName(),
                     d.getSpecialty(),

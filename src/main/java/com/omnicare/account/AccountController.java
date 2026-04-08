@@ -99,6 +99,7 @@ public class AccountController {
     }
 
     public record MedicalPassportResponse(
+            UUID id,
             String email,
             String name,
             String firstName,
@@ -140,6 +141,7 @@ public class AccountController {
                     patientMedicationRepository);
 
             return new MedicalPassportResponse(
+                    user.getId(),
                     user.getEmail(),
                     user.getName(),
                     user.getFirstName(),

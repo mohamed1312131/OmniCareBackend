@@ -52,6 +52,7 @@ public class ReservationService {
     private final ConsultationFinancialService consultationFinancialService;
     private final PatientAccessService patientAccessService;
     private final ConsultationRealtimeNotificationService consultationRealtimeNotificationService;
+    private final ReservationRealtimeNotificationService reservationRealtimeNotificationService;
 
     public ReservationService(
             ReservationRequestRepository reservationRequestRepository,
@@ -63,7 +64,8 @@ public class ReservationService {
             ConsultationRepository consultationRepository,
             ConsultationFinancialService consultationFinancialService,
             PatientAccessService patientAccessService,
-            ConsultationRealtimeNotificationService consultationRealtimeNotificationService) {
+            ConsultationRealtimeNotificationService consultationRealtimeNotificationService,
+            ReservationRealtimeNotificationService reservationRealtimeNotificationService) {
         this.reservationRequestRepository = reservationRequestRepository;
         this.availabilityIntentRepository = availabilityIntentRepository;
         this.proposedSlotRepository = proposedSlotRepository;
@@ -74,6 +76,7 @@ public class ReservationService {
         this.consultationFinancialService = consultationFinancialService;
         this.patientAccessService = patientAccessService;
         this.consultationRealtimeNotificationService = consultationRealtimeNotificationService;
+        this.reservationRealtimeNotificationService = reservationRealtimeNotificationService;
     }
 
     public record AvailabilityIntentCreate(
@@ -86,6 +89,8 @@ public class ReservationService {
     public record CreateRequest(
             UUID patientId,
             UUID providerId,
+            String visitType,
+            Boolean isEmergency,
             LocalDate searchStartDate,
             LocalDate searchEndDate,
             String reason,
@@ -122,6 +127,16 @@ public class ReservationService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "searchEndDate must be >= searchStartDate");
         }
 
+        List<AvailabilityIntentCreate> cleanedIntents = request.intents() == null
+                ? List.of()
+                : request.intents().stream()
+                        .filter(Objects::nonNull)
+                        .distinct()
+                        .toList();
+        if (cleanedIntents.size() != 3) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Exactly 3 distinct intents are required");
+        }
+
         Patient patient;
         if (request.patientId() != null) {
             patient = patientRepository.findByIdAndOwnerUserId(request.patientId(), actor.getId())
@@ -150,25 +165,26 @@ public class ReservationService {
 
         ReservationRequest saved = reservationRequestRepository.save(row);
 
-        if (request.intents() != null && !request.intents().isEmpty()) {
-            for (AvailabilityIntentCreate i : request.intents()) {
-                if (i == null) {
-                    continue;
-                }
-                AvailabilityIntent intent = new AvailabilityIntent(saved,
-                        i.timeWindow() == null ? TimeWindow.ANYTIME : i.timeWindow());
-                intent.setDayOfWeek(i.dayOfWeek());
-                intent.setSpecificDate(i.specificDate());
-                intent.setExactTime(i.exactTime());
+        for (AvailabilityIntentCreate i : cleanedIntents) {
+            AvailabilityIntent intent = new AvailabilityIntent(saved,
+                    i.timeWindow() == null ? TimeWindow.ANYTIME : i.timeWindow());
+            intent.setDayOfWeek(i.dayOfWeek());
+            intent.setSpecificDate(i.specificDate());
+            intent.setExactTime(i.exactTime());
 
-                boolean hasGeneral = intent.getDayOfWeek() != null;
-                boolean hasSpecific = intent.getSpecificDate() != null;
-                if (hasGeneral == hasSpecific) {
-                    throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                            "Each intent must specify exactly one of dayOfWeek or specificDate");
-                }
-                availabilityIntentRepository.save(intent);
+            boolean hasGeneral = intent.getDayOfWeek() != null;
+            boolean hasSpecific = intent.getSpecificDate() != null;
+            if (hasGeneral == hasSpecific) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "Each intent must specify exactly one of dayOfWeek or specificDate");
             }
+            if (intent.getSpecificDate() != null
+                    && (intent.getSpecificDate().isBefore(request.searchStartDate())
+                            || intent.getSpecificDate().isAfter(request.searchEndDate()))) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "Intent specificDate must be within the search range");
+            }
+            availabilityIntentRepository.save(intent);
         }
 
         return saved;
@@ -236,11 +252,17 @@ public class ReservationService {
                 .filter(Objects::nonNull)
                 .distinct()
                 .toList();
-        if (cleaned.size() != 3) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Exactly 3 distinct slots are required");
+        if (cleaned.size() != 1 && cleaned.size() != 3) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Exactly 1 or 3 distinct slots are required");
         }
 
         proposedSlotRepository.deleteAllByRequestId(rr.getId());
+        if (cleaned.size() == 1 && matchesAnyExactIntent(rr, cleaned.get(0))) {
+            ProposedSlot exactSlot = proposedSlotRepository.save(new ProposedSlot(rr, cleaned.get(0)));
+            return confirmReservation(rr, exactSlot, rr.getPatient() == null ? null : rr.getPatient().getOwnerUser(),
+                    false, true).request();
+        }
         for (LocalDateTime dt : cleaned) {
             proposedSlotRepository.save(new ProposedSlot(rr, dt));
         }
@@ -282,41 +304,7 @@ public class ReservationService {
         ProposedSlot slot = proposedSlotRepository.findByIdAndRequestId(request.slotId(), rr.getId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid slotId"));
 
-        Instant now = Instant.now();
-        slot.setAcceptedAt(now);
-        proposedSlotRepository.save(slot);
-
-        rr.setStatus(ReservationRequestStatus.CONFIRMED);
-        rr.setUpdatedAt(now);
-        reservationRequestRepository.save(rr);
-
-        patientAccessService.grantAccessFromPatientToProvider(actor, patient.getId(), rr.getProvider().getId());
-
-        Consultation c = new Consultation();
-        Provider provider = rr.getProvider();
-        if (provider != null
-                && (provider.getType() == ProviderType.DOCTOR || provider.getType() == ProviderType.PSYCHIATRIST)) {
-            Doctor doctor = doctorRepository.findByProviderId(provider.getId())
-                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                            "Doctor profile not found for provider"));
-            c.setDoctor(doctor);
-        }
-        c.setProvider(rr.getProvider());
-        c.setPatient(patient);
-        c.setStatus(ConsultationStatus.PENDING);
-
-        String symptoms = rr.getReason();
-        c.setSymptoms(symptoms == null || symptoms.isBlank() ? "Reservation" : symptoms.trim());
-
-        ZoneId zone = ZoneId.systemDefault();
-        Instant ts = slot.getDateTime().atZone(zone).toInstant();
-        c.setTimestamp(ts);
-
-        consultationFinancialService.apply(c);
-
-        Consultation saved = consultationRepository.save(c);
-        consultationRealtimeNotificationService.publishPendingConsultationSaved(saved);
-        return new AcceptanceResult(rr, saved);
+        return confirmReservation(rr, slot, actor, true, false);
     }
 
     @Transactional
@@ -344,6 +332,75 @@ public class ReservationService {
         rr.setStatus(ReservationRequestStatus.CANCELLED);
         rr.setUpdatedAt(Instant.now());
         return reservationRequestRepository.save(rr);
+    }
+
+    private boolean matchesAnyExactIntent(ReservationRequest rr, LocalDateTime slotDateTime) {
+        if (rr == null || rr.getId() == null || slotDateTime == null) {
+            return false;
+        }
+        return listIntents(rr.getId()).stream()
+                .filter(Objects::nonNull)
+                .anyMatch(intent -> intent.getSpecificDate() != null
+                        && intent.getExactTime() != null
+                        && LocalDateTime.of(intent.getSpecificDate(), intent.getExactTime()).equals(slotDateTime));
+    }
+
+    private AcceptanceResult confirmReservation(ReservationRequest rr, ProposedSlot slot, User accessGrantActor,
+            boolean publishDoctorConsultationNotification, boolean publishPatientReservationNotification) {
+        if (rr == null || rr.getPatient() == null || rr.getProvider() == null || slot == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "ReservationRequest confirmation data is incomplete");
+        }
+
+        Instant now = Instant.now();
+        slot.setAcceptedAt(now);
+        proposedSlotRepository.save(slot);
+
+        rr.setStatus(ReservationRequestStatus.CONFIRMED);
+        rr.setUpdatedAt(now);
+        rr.setProposalExpiresAt(null);
+        reservationRequestRepository.save(rr);
+
+        User grantActor = accessGrantActor != null ? accessGrantActor : rr.getPatient().getOwnerUser();
+        if (grantActor != null) {
+            patientAccessService.grantAccessFromPatientToProvider(grantActor, rr.getPatient().getId(),
+                    rr.getProvider().getId());
+        }
+
+        Consultation saved = createConsultationForReservation(rr, rr.getPatient(), slot);
+        if (publishDoctorConsultationNotification) {
+            consultationRealtimeNotificationService.publishPendingConsultationSaved(saved);
+        }
+        if (publishPatientReservationNotification) {
+            reservationRealtimeNotificationService.publishReservationConfirmed(rr, slot, saved);
+        }
+        return new AcceptanceResult(rr, saved);
+    }
+
+    private Consultation createConsultationForReservation(ReservationRequest rr, Patient patient, ProposedSlot slot) {
+        Consultation c = new Consultation();
+        Provider provider = rr.getProvider();
+        if (provider != null
+                && (provider.getType() == ProviderType.DOCTOR || provider.getType() == ProviderType.PSYCHIATRIST)) {
+            Doctor doctor = doctorRepository.findByProviderId(provider.getId())
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                            "Doctor profile not found for provider"));
+            c.setDoctor(doctor);
+        }
+        c.setProvider(provider);
+        c.setPatient(patient);
+        c.setStatus(ConsultationStatus.PENDING);
+
+        String symptoms = rr.getReason();
+        c.setSymptoms(symptoms == null || symptoms.isBlank() ? "Reservation" : symptoms.trim());
+
+        ZoneId zone = ZoneId.systemDefault();
+        Instant ts = slot.getDateTime().atZone(zone).toInstant();
+        c.setTimestamp(ts);
+
+        consultationFinancialService.apply(c);
+
+        return consultationRepository.save(c);
     }
 
     private void touchExpiry(ReservationRequest rr) {
