@@ -1,5 +1,6 @@
 package com.omnicare.doctor.controller;
 
+import com.omnicare.config.GoogleMapsConfig;
 import com.omnicare.patient.model.Patient;
 import com.omnicare.patient.model.PatientAllergy;
 import com.omnicare.patient.repository.PatientAllergyRepository;
@@ -38,6 +39,8 @@ import com.omnicare.profile.model.User;
 import com.omnicare.profile.repository.UserRepository;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -50,6 +53,12 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigDecimal;
+import java.net.URI;
+import java.net.URLEncoder;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.Period;
@@ -65,8 +74,10 @@ import java.util.UUID;
 public class ConsultationController {
 
     private static final Logger log = LoggerFactory.getLogger(ConsultationController.class);
+    private static final HttpClient HTTP_CLIENT = HttpClient.newHttpClient();
 
     private final UserRepository userRepository;
+    private final GoogleMapsConfig googleMapsConfig;
     private final DoctorService doctorService;
     private final ProviderService providerService;
     private final DoctorRepository doctorRepository;
@@ -86,6 +97,7 @@ public class ConsultationController {
 
     public ConsultationController(
             UserRepository userRepository,
+            GoogleMapsConfig googleMapsConfig,
             DoctorService doctorService,
             ProviderService providerService,
             DoctorRepository doctorRepository,
@@ -103,6 +115,7 @@ public class ConsultationController {
             TreatmentPlanRepository treatmentPlanRepository,
             ConsultationRealtimeNotificationService consultationRealtimeNotificationService) {
         this.userRepository = userRepository;
+        this.googleMapsConfig = googleMapsConfig;
         this.doctorService = doctorService;
         this.providerService = providerService;
         this.doctorRepository = doctorRepository;
@@ -183,6 +196,79 @@ public class ConsultationController {
         throw new ResponseStatusException(HttpStatus.FORBIDDEN);
     }
 
+    @GetMapping("/route-summary")
+    @Transactional(readOnly = true)
+    public ConsultationRouteSummaryResponse getRouteSummary(
+            Authentication authentication,
+            @RequestParam("originLat") Double originLat,
+            @RequestParam("originLng") Double originLng,
+            @RequestParam("destinationLat") Double destinationLat,
+            @RequestParam("destinationLng") Double destinationLng) {
+        requireUser(authentication);
+
+        if (originLat == null || originLng == null || destinationLat == null || destinationLng == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "originLat, originLng, destinationLat and destinationLng are required");
+        }
+        if (!googleMapsConfig.isConfigured()) {
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
+                    "Google Maps API key is not configured");
+        }
+
+        try {
+            URI uri = buildDirectionsUri(originLat, originLng, destinationLat, destinationLng);
+            HttpRequest request = HttpRequest.newBuilder(uri)
+                    .GET()
+                    .build();
+            HttpResponse<String> response = HTTP_CLIENT.send(request, HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() < 200 || response.statusCode() >= 300) {
+                throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
+                        "Google Directions API returned HTTP " + response.statusCode());
+            }
+
+            ObjectMapper objectMapper = new ObjectMapper();
+            JsonNode root = objectMapper.readTree(response.body());
+            String status = root.path("status").asText();
+            if (!"OK".equalsIgnoreCase(status)) {
+                String errorMessage = root.path("error_message").asText();
+                String message = errorMessage == null || errorMessage.isBlank()
+                        ? "Google Directions API status: " + status
+                        : errorMessage;
+                throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, message);
+            }
+
+            JsonNode route = root.path("routes").isArray() && root.path("routes").size() > 0
+                    ? root.path("routes").get(0)
+                    : null;
+            JsonNode leg = route != null && route.path("legs").isArray() && route.path("legs").size() > 0
+                    ? route.path("legs").get(0)
+                    : null;
+            if (leg == null || leg.isMissingNode()) {
+                throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
+                        "Google Directions API returned no route legs");
+            }
+
+            return new ConsultationRouteSummaryResponse(
+                    leg.path("distance").path("value").isNumber()
+                            ? leg.path("distance").path("value").asInt()
+                            : null,
+                    leg.path("distance").path("text").asText(null),
+                    leg.path("duration").path("value").isNumber()
+                            ? leg.path("duration").path("value").asInt()
+                            : null,
+                    leg.path("duration").path("text").asText(null),
+                    leg.path("start_address").asText(null),
+                    leg.path("end_address").asText(null),
+                    status);
+        } catch (ResponseStatusException ex) {
+            throw ex;
+        } catch (Exception ex) {
+            log.error("[ConsultationController.getRouteSummary] failed to fetch Google Directions summary", ex);
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
+                    "Unable to fetch route summary right now");
+        }
+    }
+
     public record CreateConsultationRequest(
             UUID doctorId,
             UUID providerId,
@@ -211,6 +297,16 @@ public class ConsultationController {
             String diagnosis,
             String treatment,
             java.math.BigDecimal fee) {
+    }
+
+    public record ConsultationRouteSummaryResponse(
+            @JsonProperty("distance_meters") Integer distanceMeters,
+            @JsonProperty("distance_text") String distanceText,
+            @JsonProperty("duration_seconds") Integer durationSeconds,
+            @JsonProperty("duration_text") String durationText,
+            @JsonProperty("start_address") String startAddress,
+            @JsonProperty("end_address") String endAddress,
+            @JsonProperty("status") String status) {
     }
 
     public record ConsultationFlowResponse(
@@ -951,6 +1047,20 @@ public class ConsultationController {
             }
         }
         return null;
+    }
+
+    private URI buildDirectionsUri(double originLat, double originLng, double destinationLat, double destinationLng) {
+        String origin = originLat + "," + originLng;
+        String destination = destinationLat + "," + destinationLng;
+        String encodedOrigin = URLEncoder.encode(origin, StandardCharsets.UTF_8);
+        String encodedDestination = URLEncoder.encode(destination, StandardCharsets.UTF_8);
+        String encodedKey = URLEncoder.encode(googleMapsConfig.apiKey(), StandardCharsets.UTF_8);
+        String url = "https://maps.googleapis.com/maps/api/directions/json"
+                + "?origin=" + encodedOrigin
+                + "&destination=" + encodedDestination
+                + "&mode=driving"
+                + "&key=" + encodedKey;
+        return URI.create(url);
     }
 
     private User requireUser(Authentication authentication) {
