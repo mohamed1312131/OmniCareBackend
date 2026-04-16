@@ -83,6 +83,9 @@ public class User {
     @Column(name = "medical_info", columnDefinition = "jsonb")
     private Map<String, Object> medicalInfo;
 
+    @Column(name = "address")
+    private String address;
+
     protected User() {
     }
 
@@ -237,5 +240,13 @@ public class User {
 
     public void setMedicalInfo(Map<String, Object> medicalInfo) {
         this.medicalInfo = medicalInfo;
+    }
+
+    public String getAddress() {
+        return address;
+    }
+
+    public void setAddress(String address) {
+        this.address = address;
     }
 }

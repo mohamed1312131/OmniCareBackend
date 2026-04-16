@@ -31,14 +31,16 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+
+import java.util.regex.Pattern;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDate;
 import java.time.Period;
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -329,6 +331,143 @@ public class AccountController {
 
         user.setPasswordHash(passwordEncoder.encode(request.password()));
         userRepository.save(user);
+    }
+
+    // Email validation pattern
+    private static final Pattern EMAIL_PATTERN = Pattern.compile(
+            "^[A-Za-z0-9+_.-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$");
+
+    // Phone validation pattern (international format support)
+    private static final Pattern PHONE_PATTERN = Pattern.compile(
+            "^[+]?[0-9\\s\\-\\(\\)]{8,20}$");
+
+    public record UpdateProfileRequest(
+            String firstName,
+            String lastName,
+            String email,
+            String phoneNumber,
+            String address,
+            String profilePictureUrl,
+            String profilePicturePublicId) {
+    }
+
+    @PutMapping("/profile")
+    @Transactional
+    public ApiResponse<FullProfileResponse> updateProfile(
+            Authentication authentication,
+            @RequestBody UpdateProfileRequest request) {
+        User user = requireUser(authentication);
+
+        if (request == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Request body is required");
+        }
+
+        // Validate and update first name
+        if (request.firstName() != null) {
+            String trimmed = request.firstName().trim();
+            if (trimmed.isEmpty()) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "First name cannot be blank");
+            }
+            if (trimmed.length() > 100) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "First name too long (max 100 chars)");
+            }
+            user.setFirstName(trimmed);
+        }
+
+        // Validate and update last name
+        if (request.lastName() != null) {
+            String trimmed = request.lastName().trim();
+            if (trimmed.isEmpty()) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Last name cannot be blank");
+            }
+            if (trimmed.length() > 100) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Last name too long (max 100 chars)");
+            }
+            user.setLastName(trimmed);
+        }
+
+        // Update full name if first or last name changed
+        if (request.firstName() != null || request.lastName() != null) {
+            String fullName = (user.getFirstName() != null ? user.getFirstName() : "") +
+                    " " +
+                    (user.getLastName() != null ? user.getLastName() : "");
+            user.setName(fullName.trim());
+        }
+
+        // Validate and update email
+        if (request.email() != null) {
+            String trimmed = request.email().trim().toLowerCase();
+            if (trimmed.isEmpty()) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Email cannot be blank");
+            }
+            if (!EMAIL_PATTERN.matcher(trimmed).matches()) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid email format");
+            }
+            // Check if email is already taken by another user
+            if (!trimmed.equalsIgnoreCase(user.getEmail())) {
+                userRepository.findByEmail(trimmed).ifPresent(existing -> {
+                    throw new ResponseStatusException(HttpStatus.CONFLICT, "Email already in use");
+                });
+            }
+            user.setEmail(trimmed);
+        }
+
+        // Validate and update phone number
+        if (request.phoneNumber() != null) {
+            String trimmed = request.phoneNumber().trim();
+            if (trimmed.isEmpty()) {
+                user.setPhoneNumber(null);
+            } else if (!PHONE_PATTERN.matcher(trimmed).matches()) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid phone number format");
+            } else {
+                user.setPhoneNumber(trimmed);
+            }
+        }
+
+        // Update address
+        if (request.address() != null) {
+            String trimmed = request.address().trim();
+            user.setAddress(trimmed.isEmpty() ? null : trimmed);
+        }
+
+        // Update profile picture
+        if (request.profilePictureUrl() != null) {
+            String trimmed = request.profilePictureUrl().trim();
+            if (trimmed.isEmpty()) {
+                user.setProfilePictureUrl(null);
+                user.setProfilePicturePublicId(null);
+            } else {
+                user.setProfilePictureUrl(trimmed);
+                if (request.profilePicturePublicId() != null) {
+                    String publicId = request.profilePicturePublicId().trim();
+                    user.setProfilePicturePublicId(publicId.isEmpty() ? null : publicId);
+                }
+            }
+        }
+
+        userRepository.save(user);
+
+        // Fetch family members and documents for full profile response
+        List<FamilyMemberProfile> family = familyMemberRepository.findAllByUserId(user.getId()).stream()
+                .map(FamilyMemberProfile::from)
+                .toList();
+
+        List<MedicalDocumentResponse> documents = medicalDocumentRepository
+                .findAllByOwnerUserIdOrderByCreatedAtDesc(user.getId()).stream()
+                .map(MedicalDocumentResponse::from)
+                .toList();
+
+        // Return full profile with user, family members, and documents
+        return ApiResponse.success(
+                new FullProfileResponse(
+                        MedicalPassportResponse.from(
+                                user,
+                                patientService,
+                                patientChronicConditionRepository,
+                                patientMedicationRepository,
+                                providerService),
+                        family,
+                        documents));
     }
 
     private Jwt extractJwt(Authentication authentication) {
