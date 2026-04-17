@@ -45,10 +45,13 @@ public class DoctorSearchController {
             Integer experienceYears,
             BigDecimal rating,
             Integer serviceRadiusKm,
-            boolean isOnline) {
+            boolean isOnline,
+            String bio,
+            BigDecimal visitPrice,
+            String profilePhotoUrl) {
         static DoctorSearchResult from(Doctor d) {
             if (d == null || d.getProvider() == null || d.getProvider().getUser() == null) {
-                return new DoctorSearchResult(null, null, null, null, null, null, null, null, false);
+                return new DoctorSearchResult(null, null, null, null, null, null, null, null, false, null, null, null);
             }
             return new DoctorSearchResult(
                     d.getId(),
@@ -59,7 +62,10 @@ public class DoctorSearchController {
                     d.getExperienceYears(),
                     d.getProvider().getRating(),
                     d.getProvider().getServiceRadiusKm(),
-                    d.getProvider().isOnline());
+                    d.getProvider().isOnline(),
+                    d.getBio(),
+                    d.getVisitPrice(),
+                    d.getProfilePhotoUrl());
         }
     }
 
@@ -76,7 +82,10 @@ public class DoctorSearchController {
             boolean isOnline,
             Double latitude,
             Double longitude,
-            Double distanceKm) {
+            Double distanceKm,
+            String bio,
+            BigDecimal visitPrice,
+            String profilePhotoUrl) {
         static NearbyDoctorResponse from(NearbyDoctorDiscoveryService.NearbyDoctorMatch match) {
             return new NearbyDoctorResponse(
                     match.doctorId(),
@@ -91,7 +100,10 @@ public class DoctorSearchController {
                     match.isOnline(),
                     match.providerLatitude(),
                     match.providerLongitude(),
-                    match.distanceKm());
+                    match.distanceKm(),
+                    match.bio(),
+                    match.visitPrice(),
+                    match.profilePhotoUrl());
         }
     }
 

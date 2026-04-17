@@ -70,7 +70,8 @@ public class DoctorController {
     }
 
     public record PatchDoctorProfileRequest(String specialty, Integer serviceRadiusKm, Integer yearsExperience,
-            Double latitude, Double longitude) {
+            Double latitude, Double longitude, String bio, BigDecimal visitPrice, String availableHours,
+            String profilePhotoUrl) {
     }
 
     public record VerificationDocumentResponse(UUID id, String title, String fileUrl, DoctorDocumentStatus status,
@@ -93,10 +94,15 @@ public class DoctorController {
             boolean isOnline,
             Double latitude,
             Double longitude,
+            String bio,
+            BigDecimal visitPrice,
+            String availableHours,
+            String profilePhotoUrl,
             List<VerificationDocumentResponse> verificationDocuments) {
         static DoctorProfileResponse from(Doctor d, List<DoctorDocument> docs) {
             if (d == null || d.getProvider() == null || d.getProvider().getUser() == null) {
                 return new DoctorProfileResponse(null, null, null, null, null, null, null, null, false, null, null,
+                        null, null, null, null,
                         (docs == null ? List.of() : docs.stream().map(VerificationDocumentResponse::from).toList()));
             }
             return new DoctorProfileResponse(
@@ -111,6 +117,10 @@ public class DoctorController {
                     d.getProvider().isOnline(),
                     d.getProvider().getLatitude(),
                     d.getProvider().getLongitude(),
+                    d.getBio(),
+                    d.getVisitPrice(),
+                    d.getAvailableHours(),
+                    d.getProfilePhotoUrl(),
                     (docs == null ? List.of() : docs.stream().map(VerificationDocumentResponse::from).toList()));
         }
     }
@@ -264,6 +274,21 @@ public class DoctorController {
             }
             if (request.longitude() != null) {
                 provider.setLongitude(request.longitude());
+            }
+            if (request.bio() != null) {
+                String trimmed = request.bio().trim();
+                doctor.setBio(trimmed.isEmpty() ? null : trimmed);
+            }
+            if (request.visitPrice() != null) {
+                doctor.setVisitPrice(request.visitPrice());
+            }
+            if (request.availableHours() != null) {
+                String trimmed = request.availableHours().trim();
+                doctor.setAvailableHours(trimmed.isEmpty() ? null : trimmed);
+            }
+            if (request.profilePhotoUrl() != null) {
+                String trimmed = request.profilePhotoUrl().trim();
+                doctor.setProfilePhotoUrl(trimmed.isEmpty() ? null : trimmed);
             }
         }
 

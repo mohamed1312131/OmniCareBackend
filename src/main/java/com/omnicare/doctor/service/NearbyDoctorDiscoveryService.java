@@ -35,7 +35,10 @@ public class NearbyDoctorDiscoveryService {
             boolean isOnline,
             Double providerLatitude,
             Double providerLongitude,
-            Double distanceKm) {
+            Double distanceKm,
+            String bio,
+            java.math.BigDecimal visitPrice,
+            String profilePhotoUrl) {
     }
 
     @Transactional(readOnly = true)
@@ -80,7 +83,10 @@ public class NearbyDoctorDiscoveryService {
                 provider.isOnline(),
                 provider.getLatitude(),
                 provider.getLongitude(),
-                BigDecimal.valueOf(distanceKm).setScale(2, RoundingMode.HALF_UP).doubleValue());
+                BigDecimal.valueOf(distanceKm).setScale(2, RoundingMode.HALF_UP).doubleValue(),
+                doctor.getBio(),
+                doctor.getVisitPrice(),
+                doctor.getProfilePhotoUrl());
     }
 
     private static boolean withinServiceRadius(NearbyDoctorMatch match) {
