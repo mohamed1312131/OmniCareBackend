@@ -22,7 +22,9 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
                 .setAllowedOriginPatterns(
                         "http://localhost:*",
                         "http://127.0.0.1:*",
-                        "http://192.168.154.91:*"
-                );
+                        "http://192.168.154.91:*",
+                        "http://localhost:5000",
+                        "http://localhost:8080")
+                .withSockJS();
     }
 }
